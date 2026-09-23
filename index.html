@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Helpdesk AI</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f9; color: #333; }
+        .container { max-width: 650px; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px;}
+        h2 { color: #0056b3; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        input[type="text"], textarea, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }
+        button:hover { background-color: #0056b3; }
+        #result-box { display: none; background: #e9ecef; padding: 20px; border-radius: 8px; border-left: 5px solid #28a745; }
+        pre { white-space: pre-wrap; word-wrap: break-word; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>IT Help Desk Ticket AI Classification</h2>
+    <form id="ticketForm">
+        
+        <div class="form-group">
+            <label>Ticket Title:</label>
+            <input type="text" id="ticket_title" required>
+        </div>
+
+        <div class="form-group">
+            <label>Problem Description:</label>
+            <textarea id="problem_description" rows="3" required></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Affected Service / Device:</label>
+            <input type="text" id="affected_service" required>
+        </div>
+
+        <div class="form-group">
+            <label>Affected Users:</label>
+            <select id="affected_users" required>
+                <option value="individual">Individual</option>
+                <option value="multiple_users">Multiple Users</option>
+                <option value="department">Department</option>
+                <option value="organisation">Organisation</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Is Work Blocked?</label>
+            <select id="work_blocked" required>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Is Workaround Available?</label>
+            <select id="workaround_available" required>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </select>
+        </div>
+
+        <button type="submit" id="submitBtn">Classify Ticket via AI</button>
+    </form>
+</div>
+
+<!-- This box is hidden until the AI replies -->
+<div class="container" id="result-box">
+    <h3>AI Classification Result:</h3>
+    <pre id="ai-output">Loading...</pre>
+</div>
+
+<script>
+    document.getElementById('ticketForm').addEventListener('submit', function(e) {
+        e.preventDefault(); // Stop page from refreshing
+        
+        document.getElementById('submitBtn').innerText = "Processing with Gemini...";
+        document.getElementById('result-box').style.display = "block";
+        document.getElementById('ai-output').innerText = "Analyzing ticket...";
+
+        // 1. Gather all inputs into a dictionary
+        const ticketData = {
+            ticket_title: document.getElementById('ticket_title').value,
+            problem_description: document.getElementById('problem_description').value,
+            affected_service: document.getElementById('affected_service').value,
+            affected_users: document.getElementById('affected_users').value,
+            work_blocked: document.getElementById('work_blocked').value,
+            workaround_available: document.getElementById('workaround_available').value
+        };
+
+        // 2. Send dictionary to Python / Flask
+        fetch('/submit-ticket', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ticketData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            // 3. Show the JSON answer on the screen
+            document.getElementById('ai-output').innerText = JSON.stringify(data, null, 4);
+            document.getElementById('submitBtn').innerText = "Classify Ticket via AI";
+        })
+        .catch(error => {
+            document.getElementById('ai-output').innerText = "Error: Could not connect to AI.";
+            document.getElementById('submitBtn').innerText = "Classify Ticket via AI";
+        });
+    });
+</script>
+
+</body>
+</html>

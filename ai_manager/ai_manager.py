@@ -1,10 +1,19 @@
+from dotenv import load_dotenv
 from google import genai
+import os
 import json
 import logging
 logging.basicConfig(level=logging.ERROR)
 
-client = genai.Client()
+load_dotenv()  # reads .env into environment variables
 
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    raise RuntimeError(
+        "GEMINI_API_KEY not found. Copy .env.example to .env and add your key."
+    )
+
+client = genai.Client(api_key=api_key)
 
 def build_prompt(record):
     return f"""

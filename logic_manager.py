@@ -65,3 +65,23 @@ def score(record: Dict[str, Any]) -> Tuple[int, str]:
     else:
         priority_level = "P5"
     return priority_score, priority_level
+
+def route(record: Dict[str, Any], priority_level: str) -> Dict[str, str]:
+    """
+    Assigns the record to a target department and specific queue.
+    """
+    dept_raw = str(record.get("department", "Unassigned")).strip()
+    
+    # Capitalize / normalize department name
+    dept_normalized = next((d for d in VALID_DEPARTMENTS if d.lower() == dept_raw.lower()), None)
+    
+    if dept_normalized:
+        assigned_dept = dept_normalized
+        queue_name = f"{assigned_dept}_{priority_level}_Queue"
+    else:
+        assigned_dept = "Triage"
+        queue_name = "Manual_Triage_Queue"
+    return {
+        "assigned_department": assigned_dept,
+        "queue": queue_name
+    }

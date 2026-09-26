@@ -44,3 +44,24 @@ def _normalize_scope(val: Any) -> int:
     if isinstance(val, int) and 1 <= val <= 4:
         return val
     return SCOPE_MAP.get(str(val).strip().lower(), 1)
+
+def score(record: Dict[str, Any]) -> Tuple[int, str]:
+    """
+    Produces a numeric priority score (1-16) and priority tier (P1-P5).
+    Formula: Severity Score * Affected Scope Score = Priority Score
+    """
+    sev_score = _normalize_severity(record.get("severity", 1))
+    scope_score = _normalize_scope(record.get("affected_scope", 1))
+    
+    priority_score = sev_score * scope_score
+    if 15 <= priority_score <= 16:
+        priority_level = "P1"
+    elif 13 <= priority_score <= 14:
+        priority_level = "P2"
+    elif 8 <= priority_score <= 12:
+        priority_level = "P3"
+    elif 4 <= priority_score <= 7:
+        priority_level = "P4"
+    else:
+        priority_level = "P5"
+    return priority_score, priority_level

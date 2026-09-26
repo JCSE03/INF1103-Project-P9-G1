@@ -1,0 +1,61 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Page-1" id="uynH5M7DmaDm4Cq77uQv">
+    <mxGraphModel dx="792" dy="506" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-13" edge="1" parent="1" source="RoVC9L91NrDup_DPI3Zj-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="RoVC9L91NrDup_DPI3Zj-12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="AI Manager Outputs&lt;br&gt;Priority Score&amp;nbsp;&lt;br&gt;(P1-P5)" vertex="1">
+          <mxGeometry height="60" width="120" x="147" y="106" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-15" edge="1" parent="1" source="RoVC9L91NrDup_DPI3Zj-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="RoVC9L91NrDup_DPI3Zj-12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Logic Manager Outputs Priority Score&lt;br&gt;(P1-P5)" vertex="1">
+          <mxGeometry height="60" width="120" x="340" y="106" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-17" edge="1" parent="1" source="RoVC9L91NrDup_DPI3Zj-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="RoVC9L91NrDup_DPI3Zj-16">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-12" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Logic Manager will&lt;div&gt;route the ticket to respective department&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="169" x="216" y="246" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-25" edge="1" parent="1" source="RoVC9L91NrDup_DPI3Zj-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="RoVC9L91NrDup_DPI3Zj-20">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-27" edge="1" parent="1" source="RoVC9L91NrDup_DPI3Zj-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="RoVC9L91NrDup_DPI3Zj-26">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-16" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="I/O Manager will display the ticket(s) / queue of tickets" vertex="1">
+          <mxGeometry height="60" width="120" x="240.5" y="348" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-18" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;" value="EITHER&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="55" width="55" x="276" y="76" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-22" edge="1" parent="1" source="RoVC9L91NrDup_DPI3Zj-19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="RoVC9L91NrDup_DPI3Zj-12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Admin re-sends ticket for rerouting" vertex="1">
+          <mxGeometry height="60" width="120" x="435" y="246" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-24" edge="1" parent="1" source="RoVC9L91NrDup_DPI3Zj-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="RoVC9L91NrDup_DPI3Zj-19">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-20" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Admin determines wrong department" vertex="1">
+          <mxGeometry height="60" width="120" x="435" y="348" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-31" edge="1" parent="1" source="RoVC9L91NrDup_DPI3Zj-26" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="RoVC9L91NrDup_DPI3Zj-29">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-26" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Admin resolves the issue and marks it as resolved on the I/O manager (website)" vertex="1">
+          <mxGeometry height="60" width="194" x="203.5" y="462" as="geometry" />
+        </mxCell>
+        <mxCell id="RoVC9L91NrDup_DPI3Zj-29" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Logic Manager removes ticket from queue and marks as solved" vertex="1">
+          <mxGeometry height="60" width="210" x="195.5" y="566" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

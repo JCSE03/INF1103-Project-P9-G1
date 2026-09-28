@@ -1,9 +1,17 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 from google import genai
 import json
 import logging
 logging.basicConfig(level=logging.ERROR)
 
-client = genai.Client(api_key="")
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
+
+# Sanity check — remove this line once it works
+print("API KEY loaded:", "YES" if os.getenv("GEMINI_API_KEY") else "NO")
+
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 def build_prompt(record):

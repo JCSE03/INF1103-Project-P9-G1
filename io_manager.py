@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, jsonify
 import webbrowser
 from threading import Timer
-import ai_manager  # Your AI logic file
+import ai_manager      # Your AI logic file
+import logic_manager   # <-- NEW: Import your Logic Manager
 
 # Initialize Flask app to look for index.html in the same folder
 app = Flask(__name__, template_folder='.') 
@@ -27,15 +28,25 @@ def submit_ticket():
     
     print_message("Processing new ticket: " + str(form_data.get('ticket_title')))
 
-    # 2. Pass the data to your AI Manager[cite: 1]
+    # 2. Pass the data to your AI Manager
     prompt = ai_manager.build_prompt(form_data)
     raw_response = ai_manager.call_api(prompt)
     parsed_json = ai_manager.parse_response(raw_response)
     
-    # 3. Send the AI's JSON answer back to the webpage
+    # 3. Validate and Route
     if ai_manager.validate_response(parsed_json):
         print_message("AI processing successful.")
-        return jsonify(parsed_json)
+        
+        # --- NEW: Run the Logic Manager ---
+        # This is where we translate the AI text into priority scores and departments
+        final_result = logic_manager.calculate_priority(parsed_json)
+        
+        # Log the decision to the terminal so you can see it working
+        print_message(f"-> Logic Calculated: {final_result['priority']} (Score: {final_result['priority_score']}) routed to {final_result['assigned_department']}")
+        
+        # Send the enriched result to the webpage
+        return jsonify(final_result)
+        
     else:
         print_message("AI validation failed.")
         return jsonify({"error": "AI validation failed", "raw_data": parsed_json}), 400

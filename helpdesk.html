@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>IT Helpdesk Dashboard</title>
+
+</head>
+
+
+<body>
+
+    <h1>IT Helpdesk Dashboard</h1>
+
+
+    <!-- Waiting screen -->
+
+    <div id="waiting">
+
+        <h2>Waiting for new ticket...</h2>
+
+        <p>
+            The helpdesk is currently waiting for a new ticket submission.
+        </p>
+
+    </div>
+
+
+    <!-- Ticket information -->
+
+    <div id="ticket" style="display: none;">
+
+        <h2 id="ticket-title"></h2>
+
+
+        <h3>Ticket Information</h3>
+
+        <p>
+            <strong>Problem:</strong>
+            <span id="problem-description"></span>
+        </p>
+
+
+        <p>
+            <strong>Affected Service / Device:</strong>
+            <span id="affected-service"></span>
+        </p>
+
+
+        <hr>
+
+
+        <h3>AI Classification</h3>
+
+
+        <p>
+            <strong>Category:</strong>
+            <span id="category"></span>
+        </p>
+
+
+        <p>
+            <strong>Severity:</strong>
+            <span id="severity"></span>
+        </p>
+
+
+        <p>
+            <strong>Affected Scope:</strong>
+            <span id="scope"></span>
+        </p>
+
+
+        <p>
+            <strong>AI Summary:</strong>
+            <span id="summary"></span>
+        </p>
+
+
+        <p>
+            <strong>Confidence Score:</strong>
+            <span id="confidence"></span>
+        </p>
+
+    </div>
+
+
+    <script>
+
+        function checkForTicket() {
+
+            fetch("/ticket-status")
+
+                .then(response => response.json())
+
+                .then(data => {
+
+                    if (data.available) {
+
+                        const ticket = data.ticket;
+
+                        const result = ticket.result;
+
+
+                        // Hide waiting message
+
+                        document.getElementById("waiting")
+                            .style.display = "none";
+
+
+                        // Show ticket
+
+                        document.getElementById("ticket")
+                            .style.display = "block";
+
+
+                        // Ticket information
+
+                        document.getElementById("ticket-title")
+                            .innerText = ticket.ticket_title;
+
+
+                        document.getElementById("problem-description")
+                            .innerText = ticket.problem_description;
+
+
+                        document.getElementById("affected-service")
+                            .innerText = ticket.affected_service;
+
+
+                        // AI classification
+
+                        document.getElementById("category")
+                            .innerText = result.category;
+
+
+                        document.getElementById("severity")
+                            .innerText = result.severity;
+
+
+                        document.getElementById("scope")
+                            .innerText = result.affected_scope;
+
+
+                        document.getElementById("summary")
+                            .innerText = result.summary;
+
+
+                        document.getElementById("confidence")
+                            .innerText = result.confidence_score;
+
+                    }
+
+                })
+
+                .catch(error => {
+
+                    console.error(
+                        "Error checking ticket:",
+                        error
+                    );
+
+                });
+
+        }
+
+
+        // Check immediately when the page loads
+
+        checkForTicket();
+
+
+        // Check for new tickets every 2 seconds
+
+        setInterval(
+            checkForTicket,
+            2000
+        );
+
+    </script>
+
+
+</body>
+
+</html>

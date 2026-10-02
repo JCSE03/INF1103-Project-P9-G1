@@ -40,12 +40,12 @@ Notice: Confidence Score < 0.5 | Please re-route if needed
 
 1. Clone the repo and pull the latest `main` (or your feature branch)
 2. Copy the env template: `cp .env.example .env`
-3. Get a Gemini API key from the gc and paste it into `.env`
+3. Get your own Gemini API key from https://aistudio.google.com/apikey (use your own Google account, don't share keys) and paste it into `.env`
 4. Install dependencies: `pip install -r requirements.txt`
 5. Run: `python main.py` (or `python io_manager.py`, whichever is the entry point)
 
 **Never commit `.env`**. It's gitignored on purpose. If `git status` ever shows `.env`, don't run `git add .` blindly; check first.
 
-
+The free tier allows about 20 Gemini requests per day per key. Use the offline tests (`python test_ai.py`) for day-to-day work, since they make no API calls.
 
 

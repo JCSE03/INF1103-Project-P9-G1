@@ -8,54 +8,62 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 40px;
-            background-color: #f4f6f9;
-            color: #333;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 0;
         }
 
         .container {
-            max-width: 650px;
+            width: 500px;
+            margin: 60px auto;
             background: white;
-            padding: 25px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
-        h2 {
-            color: #0056b3;
-            margin-bottom: 20px;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
+        h1 {
+            text-align: center;
+            margin-bottom: 25px;
         }
 
         label {
             display: block;
-            font-weight: bold;
+            margin-top: 15px;
             margin-bottom: 5px;
+            font-weight: bold;
         }
 
-        input[type="text"],
+        input,
         textarea,
         select {
             width: 100%;
             padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
             box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        textarea {
+            height: 140px;
+            resize: vertical;
+        }
+
+        textarea::placeholder {
+            color: #999;
         }
 
         button {
+            width: 100%;
+            margin-top: 20px;
+            padding: 12px;
             background-color: #007bff;
             color: white;
             border: none;
-            padding: 12px 20px;
-            border-radius: 4px;
-            cursor: pointer;
+            border-radius: 5px;
             font-size: 16px;
-            width: 100%;
+            cursor: pointer;
         }
 
         button:hover {
@@ -63,17 +71,12 @@
         }
 
         #result-box {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8d7da;
+            color: #721c24;
+            border-radius: 5px;
             display: none;
-            background: #e9ecef;
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 5px solid #28a745;
-        }
-
-        pre {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            font-family: monospace;
         }
     </style>
 </head>
@@ -82,172 +85,131 @@
 
 <div class="container">
 
-    <h2>IT Help Desk Ticket AI Classification</h2>
+    <h1>IT Helpdesk AI</h1>
 
-    <form id="ticketForm">
+    <form id="ticket-form">
 
-        <div class="form-group">
-            <label>Ticket Title:</label>
-            <input type="text" id="ticket_title" required>
-        </div>
+        <label for="ticket_title">Ticket Title:</label>
+        <input
+            type="text"
+            id="ticket_title"
+            name="ticket_title"
+            required
+        >
 
-        <div class="form-group">
-            <label>Problem Description:</label>
-            <textarea id="problem_description" rows="3" required></textarea>
-        </div>
+        <label for="problem_description">Problem Description / Device Details:</label>
+        <textarea
+            id="problem_description"
+            name="problem_description"
+            placeholder="Please describe the issue in detail and provide your Name, Device# and Contact No."
+            required
+        ></textarea>
 
-        <div class="form-group">
-            <label>Affected Service / Device:</label>
-            <input type="text" id="affected_service" required>
-        </div>
+        <label for="affected_users">Affected Users:</label>
+        <select
+            id="affected_users"
+            name="affected_users"
+            required
+        >
+            <option value="">Please select</option>
+            <option value="individual">Individual</option>
+            <option value="multiple_users">Multiple Users</option>
+            <option value="department">Department</option>
+            <option value="organisation">Organisation</option>
+        </select>
 
-        <div class="form-group">
-            <label>Affected Users:</label>
+        <label for="work_blocked">Is work blocked?</label>
+        <select
+            id="work_blocked"
+            name="work_blocked"
+            required
+        >
+            <option value="">Please select</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+        </select>
 
-            <select id="affected_users" required>
-                <option value="individual">Individual</option>
-                <option value="multiple_users">Multiple Users</option>
-                <option value="department">Department</option>
-                <option value="organisation">Organisation</option>
-            </select>
-        </div>
+        <label for="workaround_available">Is a workaround available?</label>
+        <select
+            id="workaround_available"
+            name="workaround_available"
+            required
+        >
+            <option value="">Please select</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+        </select>
 
-        <div class="form-group">
-            <label>Is Work Blocked?</label>
-
-            <select id="work_blocked" required>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-            </select>
-        </div>
-
-        <div class="form-group">
-            <label>Is Workaround Available?</label>
-
-            <select id="workaround_available" required>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-            </select>
-        </div>
-
-        <button type="submit" id="submitBtn">
+        <button type="submit" id="submit-button">
             Classify Ticket via AI
         </button>
 
     </form>
 
-</div>
-
-
-<!--
-    This box is kept for now but the AI result
-    will no longer be displayed to the user.
--->
-<div class="container" id="result-box">
-
-    <h3>Ticket Status:</h3>
-
-    <pre id="ai-output"></pre>
+    <div id="result-box"></div>
 
 </div>
-
 
 <script>
+    document.getElementById("ticket-form").addEventListener("submit", async function(event) {
 
-    document.getElementById('ticketForm').addEventListener(
-        'submit',
-        function(e) {
+        event.preventDefault();
 
-            e.preventDefault();
+        const button = document.getElementById("submit-button");
+        const resultBox = document.getElementById("result-box");
 
-            document.getElementById('submitBtn').innerText =
-                "Processing with Gemini...";
+        button.textContent = "Processing with Gemini...";
+        button.disabled = true;
 
+        const ticketData = {
+            ticket_title: document.getElementById("ticket_title").value,
+            problem_description: document.getElementById("problem_description").value,
+            affected_users: document.getElementById("affected_users").value,
+            work_blocked: document.getElementById("work_blocked").value,
+            workaround_available: document.getElementById("workaround_available").value
+        };
 
-            // Gather all inputs into a dictionary
-            const ticketData = {
+        try {
 
-                ticket_title:
-                    document.getElementById('ticket_title').value,
-
-                problem_description:
-                    document.getElementById('problem_description').value,
-
-                affected_service:
-                    document.getElementById('affected_service').value,
-
-                affected_users:
-                    document.getElementById('affected_users').value,
-
-                work_blocked:
-                    document.getElementById('work_blocked').value,
-
-                workaround_available:
-                    document.getElementById('workaround_available').value
-            };
-
-
-            // Send ticket to Flask
-            fetch('/submit-ticket', {
-
-                method: 'POST',
-
+            const response = await fetch("/submit-ticket", {
+                method: "POST",
                 headers: {
-                    'Content-Type': 'application/json'
+                    "Content-Type": "application/json"
                 },
-
                 body: JSON.stringify(ticketData)
-
-            })
-
-            .then(response => response.json())
-
-            .then(data => {
-
-                if (data.success) {
-
-                    // Show confirmation to the user
-                    alert(data.message);
-
-                    // Clear the form
-                    document.getElementById('ticketForm').reset();
-
-                }
-
-                else {
-
-                    document.getElementById('ai-output').innerText =
-                        "Error: " + data.error;
-
-                    document.getElementById('result-box').style.display =
-                        "block";
-                }
-
-
-                document.getElementById('submitBtn').innerText =
-                    "Classify Ticket via AI";
-
-            })
-
-            .catch(error => {
-
-                console.error(error);
-
-                document.getElementById('ai-output').innerText =
-                    "Error: Could not process ticket.";
-
-                document.getElementById('result-box').style.display =
-                    "block";
-
-                document.getElementById('submitBtn').innerText =
-                    "Classify Ticket via AI";
-
             });
+
+            const data = await response.json();
+
+            if (data.success) {
+
+                alert(data.message);
+
+                document.getElementById("ticket-form").reset();
+                resultBox.style.display = "none";
+
+            } else {
+
+                resultBox.textContent = "Error: " + data.error;
+                resultBox.style.display = "block";
+
+            }
+
+        } catch (error) {
+
+            console.error(error);
+
+            resultBox.textContent = "Error: Could not process ticket.";
+            resultBox.style.display = "block";
+
+        } finally {
+
+            button.textContent = "Classify Ticket via AI";
+            button.disabled = false;
 
         }
 
-    );
-
+    });
 </script>
 
 </body>

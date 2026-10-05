@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import ai_manager
+import logic_manager
 
 # Initialize Flask app to look for index.html in the same folder
 app = Flask(__name__, template_folder='.')
@@ -82,14 +83,24 @@ def submit_ticket():
 
         print_message("AI processing successful.")
 
-        parsed_json = classification["data"]
+        # 3. Business rules turn the AI result into a decision: (priority score, P1-P5, department and review flag)
+        decision = logic_manager.process_ticket(classification)
 
-        # Store the latest ticket for the helpdesk page
+        # Show the decision in the terminal so you can see it working
+        print_message(
+            "Ticket routed: "
+            + decision["priority"]
+            + " (score " + str(decision["priority_score"]) + ")"
+            + " to " + decision["department"]
+        )
+
+        # Store the latest ticket for the helpdesk page. "result" now holds the full decision: the AI fields
+        # (category, severity, scope, summary, confidence) + priority, priority_score, department and needs_review.
         latest_ticket = {
             "ticket_title": form_data.get("ticket_title"),
             "problem_description": form_data.get("problem_description"),
             "affected_service": form_data.get("affected_service"),
-            "result": parsed_json
+            "result": decision
         }
 
         # Send confirmation back to the user

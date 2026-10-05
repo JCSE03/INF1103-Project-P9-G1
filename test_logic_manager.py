@@ -1,363 +1,204 @@
-"""
-test_logic_manager.py - offline tests for logic_manager.py
+# test_logic_manager.py - offline tests for logic_manager.py
 
-HOW TO RUN:   python test_logic_manager.py
-    - Needs NO API key and NO internet: every "AI response" below is
-      hardcoded, shaped exactly like ai_manager.classify_ticket() output.
-    - Procedural on purpose: plain functions + assert, no classes
-      (unittest.TestCase would break the "no class definitions" rule).
-    - Any function whose name starts with test_ is run automatically.
-    - Exits with code 1 if any test fails (so Docker / CI notice).
-"""
+# Run with:  python test_logic_manager.py
+# No API key or internet needed: every AI result below is hardcoded.
 
 import sys
 
 import logic_manager as lm
 
 
-# ============================================================
-# HELPERS - build sample inputs (override only what a test cares about)
-# ============================================================
-
-def make_record(**changes) -> dict:
-    """A typical ticket as io_manager would pass it (low-impact by default)."""
-    record = {
-        "ticket_title": "Test ticket",
-        "problem_description": "Something is wrong.",
-        "affected_service": "Office printer",
-        "affected_users": "individual",
-        "work_blocked": "no",
-        "workaround_available": "yes",
+def make_ai_result(category="hardware", severity="low", scope="individual",
+                   confidence=0.9, flagged=False):
+    """A fake ai_manager result. Change only what a test cares about."""
+    return {
+        "status": "success",
+        "data": {
+            "category": category,
+            "severity": severity,
+            "affected_scope": scope,
+            "summary": "Test summary.",
+            "confidence_score": confidence,
+        },
+        "flagged": flagged,
     }
-    record.update(changes)
-    return record
 
 
-def make_ai_result(**changes) -> dict:
-    """A successful ai_manager result with hardcoded classification data."""
-    data = {
-        "category": "hardware",
-        "severity": "low",
-        "affected_scope": "individual",
-        "summary": "Printer is jammed.",
-        "confidence_score": 0.9,
+def make_ticket(ticket_id, priority_number, score, submitted_at):
+    """A minimal saved ticket, just enough for sorting."""
+    return {
+        "ticket_id": ticket_id,
+        "priority_number": priority_number,
+        "priority_score": score,
+        "submitted_at": submitted_at,
     }
-    data.update(changes)
-    return {"status": "success", "data": data}
 
 
-# ============================================================
-# CONFIGURATION CONSISTENCY
-# ============================================================
+# ---------- scoring ----------
 
-def test_routing_covers_every_ai_category():
-    # Must mirror ai_manager.VALID_CATEGORIES (copied here so this test
-    # never imports ai_manager, which needs an API key to load).
-    ai_categories = {
-        "hardware", "software", "network", "account_access",
-        "cybersecurity", "hr", "finance", "other",
-    }
-    assert set(lm.ROUTING.keys()) == ai_categories
+def test_score_adds_severity_and_scope():
+    assert lm.calculate_priority_score("high", "department", "network") == 60
 
 
-def test_every_priority_has_an_sla():
-    for priority in lm.PRIORITY_ORDER:
-        sla = lm.get_sla(priority)
-        assert sla["response_minutes"] > 0
-        assert sla["resolution_hours"] > 0
-
-
-def test_get_sla_returns_a_copy():
-    sla = lm.get_sla("P1")
-    sla["response_minutes"] = 9999
-    assert lm.get_sla("P1")["response_minutes"] == 15
-
-
-# ============================================================
-# SMALL HELPERS
-# ============================================================
-
-def test_parse_yes_no():
-    assert lm.parse_yes_no("yes") is True
-    assert lm.parse_yes_no("Yes ") is True
-    assert lm.parse_yes_no(True) is True
-    assert lm.parse_yes_no("no") is False
-    assert lm.parse_yes_no(False) is False
-    assert lm.parse_yes_no(None) is False
-
-
-def test_parse_reported_scope():
-    assert lm.parse_reported_scope("department") == "department"
-    assert lm.parse_reported_scope("Organisation") == "organisation"
-    assert lm.parse_reported_scope(1) == "individual"
-    assert lm.parse_reported_scope("35") == "multiple_users"
-    assert lm.parse_reported_scope("50+") == "multiple_users"
-    assert lm.parse_reported_scope("lots") is None
-    assert lm.parse_reported_scope(0) is None
-    assert lm.parse_reported_scope(None) is None
+def test_cyber_gets_bonus_points():
+    assert lm.calculate_priority_score("medium", "individual", "cybersecurity") == 35
 
 
 def test_score_to_priority_boundaries():
-    assert lm.score_to_priority(100) == "P1"
     assert lm.score_to_priority(70) == "P1"
     assert lm.score_to_priority(69) == "P2"
     assert lm.score_to_priority(50) == "P2"
     assert lm.score_to_priority(49) == "P3"
-    assert lm.score_to_priority(30) == "P3"
-    assert lm.score_to_priority(29) == "P4"
-    assert lm.score_to_priority(0) == "P4"
+    assert lm.score_to_priority(35) == "P3"
+    assert lm.score_to_priority(34) == "P4"
+    assert lm.score_to_priority(25) == "P4"
+    assert lm.score_to_priority(24) == "P5"
 
 
-def test_score_is_capped_at_100():
-    score = lm.calculate_priority_score(
-        "critical", "organisation", True, False, "cybersecurity", True
-    )
-    assert score == 100
+def test_every_priority_is_reachable():
+    # Try every severity/scope combination, with and without cyber
+    reached = set()
+    for category in ("hardware", "cybersecurity"):
+        for severity in lm.SEVERITY_POINTS:
+            for scope in lm.SCOPE_POINTS:
+                score = lm.calculate_priority_score(severity, scope, category)
+                reached.add(lm.score_to_priority(score))
+    assert reached == {"P1", "P2", "P3", "P4", "P5"}
 
 
-def test_more_urgent_picks_the_lower_p_number():
-    assert lm.more_urgent("P1", "P3") == "P1"
-    assert lm.more_urgent("P4", "P2") == "P2"
-    assert lm.more_urgent("P2", "P2") == "P2"
+# ---------- cyber override ----------
+
+def test_cyber_beyond_one_person_is_p1():
+    assert lm.apply_cyber_override("P3", "cybersecurity", "multiple_users") == "P1"
 
 
-# ============================================================
-# BUSINESS RULES (one rule at a time)
-# ============================================================
-
-def test_scope_is_raised_when_user_reports_bigger_scope():
-    assert lm.reconcile_scope("individual", "department") == ("department", True)
+def test_cyber_for_one_person_keeps_its_priority():
+    assert lm.apply_cyber_override("P3", "cybersecurity", "individual") == "P3"
 
 
-def test_scope_is_never_lowered():
-    assert lm.reconcile_scope("organisation", "individual") == ("organisation", False)
+def test_non_cyber_is_never_overridden():
+    assert lm.apply_cyber_override("P5", "hardware", "organisation") == "P5"
 
 
-def test_scope_unchanged_when_user_answer_unknown():
-    assert lm.reconcile_scope("department", None) == ("department", False)
+# ---------- routing ----------
+
+def test_routing():
+    assert lm.get_department("cybersecurity") == "Cyber"
+    assert lm.get_department("hr") == "HR"
+    assert lm.get_department("finance") == "Finance"
+    for category in ("hardware", "software", "network", "account_access", "other"):
+        assert lm.get_department(category) == "Infra"
 
 
-def test_critical_service_needs_keyword_and_high_severity():
-    assert lm.is_critical_service_hit("Core banking application", "x", "critical") is True
-    assert lm.is_critical_service_hit("Core banking application", "x", "low") is False
-    assert lm.is_critical_service_hit("Shared drive", "x", "critical") is False
+def test_routing_only_uses_the_four_departments():
+    assert set(lm.ROUTING.values()) == set(lm.DEPARTMENTS)
 
 
-def test_cybersecurity_override_floor_is_p2_for_one_user():
-    assert lm.apply_priority_overrides("P4", "cybersecurity", "individual")[0] == "P2"
+# ---------- review flag ----------
+
+def test_review_flag():
+    assert lm.needs_human_review(0.59, False) is True    # unsure
+    assert lm.needs_human_review(0.60, False) is False   # exactly at threshold
+    assert lm.needs_human_review(0.95, True) is True     # AI flagged it
+    assert lm.needs_human_review(0.95, False) is False
 
 
-def test_cybersecurity_override_is_p1_beyond_one_user():
-    assert lm.apply_priority_overrides("P3", "cybersecurity", "department")[0] == "P1"
+# ---------- process_ticket (the worked examples) ----------
 
-
-def test_override_never_lowers_priority():
-    priority, reason = lm.apply_priority_overrides("P1", "cybersecurity", "individual")
-    assert priority == "P1" and reason is None
-
-
-def test_non_security_ticket_has_no_override():
-    assert lm.apply_priority_overrides("P4", "hardware", "individual") == ("P4", None)
-
-
-def test_escalation_rules():
-    assert lm.check_escalation("P1", "low", "individual")[0] is True
-    assert lm.check_escalation("P2", "high", "department")[0] is True
-    assert lm.check_escalation("P2", "critical", "organisation")[0] is True
-    assert lm.check_escalation("P2", "high", "individual")[0] is False
-    assert lm.check_escalation("P3", "medium", "department")[0] is False
-
-
-def test_review_rules():
-    assert lm.check_needs_review(0.59, False)[0] is True    # low confidence
-    assert lm.check_needs_review(0.60, False)[0] is False   # exactly at threshold
-    assert lm.check_needs_review(0.95, True)[0] is True     # scope disagreement
-    assert lm.check_needs_review(0.95, False)[0] is False
-
-
-def test_outcome_priority_order():
-    assert lm.decide_outcome(True, True) == "escalated"   # urgency wins
-    assert lm.decide_outcome(False, True) == "flagged"
-    assert lm.decide_outcome(False, False) == "routed"
-
-
-# ============================================================
-# END-TO-END: process_ticket with hardcoded AI responses
-# ============================================================
-
-def test_org_wide_banking_outage_is_p1_and_escalated():
-    record = make_record(
-        affected_service="Mobile banking app",
-        affected_users="organisation",
-        work_blocked="yes",
-        workaround_available="no",
-    )
-    ai = make_ai_result(
-        category="software", severity="critical",
-        affected_scope="organisation", summary="Banking app login fails for all users.",
-    )
-    result = lm.process_ticket(record, ai)
+def test_core_banking_outage_is_p1_infra():
+    result = lm.process_ticket(make_ai_result("software", "critical", "organisation"))
+    assert result["priority_score"] == 85
     assert result["priority"] == "P1"
-    assert result["priority_score"] == 90
-    assert result["outcome"] == "escalated"
-    assert result["escalate"] is True
-    assert result["assigned_department"] == "Application Support"
-    assert result["sla_response_minutes"] == 15
+    assert result["priority_number"] == 1
+    assert result["department"] == "Infra"
 
 
-def test_department_server_outage_is_p2_and_escalated():
-    record = make_record(
-        affected_service="Server X", affected_users="department",
-        work_blocked="yes", workaround_available="no",
-    )
-    ai = make_ai_result(category="network", severity="high", affected_scope="department")
-    result = lm.process_ticket(record, ai)
+def test_department_server_down_is_p2():
+    result = lm.process_ticket(make_ai_result("network", "high", "department"))
+    assert result["priority_score"] == 60
     assert result["priority"] == "P2"
-    assert result["escalate"] is True
-    assert result["outcome"] == "escalated"
-    assert result["assigned_department"] == "Network Operations"
 
 
-def test_minor_individual_issue_is_p4_and_auto_routed():
-    result = lm.process_ticket(make_record(), make_ai_result())
+def test_single_user_phishing_is_p3_cyber():
+    result = lm.process_ticket(make_ai_result("cybersecurity", "medium", "individual"))
+    assert result["priority"] == "P3"
+    assert result["department"] == "Cyber"
+
+
+def test_multi_user_phishing_is_forced_to_p1():
+    result = lm.process_ticket(make_ai_result("cybersecurity", "medium", "multiple_users"))
+    assert result["priority_score"] == 45     # score alone would be P3
+    assert result["priority"] == "P1"
+
+
+def test_outlook_crash_is_p4():
+    result = lm.process_ticket(make_ai_result("software", "medium", "individual"))
     assert result["priority"] == "P4"
-    assert result["outcome"] == "routed"
-    assert result["escalate"] is False
-    assert result["requires_human_review"] is False
-    assert result["assigned_department"] == "Desktop & Hardware Support"
 
 
-def test_single_user_phishing_gets_p2_floor_and_goes_to_soc():
-    ai = make_ai_result(category="cybersecurity", severity="medium")
-    result = lm.process_ticket(make_record(affected_service="Email"), ai)
-    assert result["priority"] == "P2"
-    assert result["assigned_department"] == "Security Operations Centre (SOC)"
-    assert result["escalate"] is False
+def test_jammed_printer_is_p5():
+    result = lm.process_ticket(make_ai_result("hardware", "low", "individual"))
+    assert result["priority"] == "P5"
+    assert result["needs_review"] is False
 
 
-def test_multi_user_cybersecurity_is_forced_to_p1():
-    record = make_record(affected_users="multiple_users")
-    ai = make_ai_result(
-        category="cybersecurity", severity="medium", affected_scope="multiple_users"
-    )
-    result = lm.process_ticket(record, ai)
-    assert result["priority"] == "P1"
-    assert result["outcome"] == "escalated"
+def test_low_confidence_is_flagged_for_review():
+    result = lm.process_ticket(make_ai_result(confidence=0.4))
+    assert result["needs_review"] is True
 
 
-def test_low_confidence_ticket_is_flagged_for_review():
-    result = lm.process_ticket(make_record(), make_ai_result(confidence_score=0.4))
-    assert result["outcome"] == "flagged"
-    assert result["requires_human_review"] is True
+def test_ai_fields_are_copied_into_the_decision():
+    result = lm.process_ticket(make_ai_result("hr", "low", "individual", 0.8))
+    assert result["category"] == "hr"
+    assert result["severity"] == "low"
+    assert result["affected_scope"] == "individual"
+    assert result["summary"] == "Test summary."
+    assert result["confidence_score"] == 0.8
 
 
-def test_ai_underestimating_scope_is_corrected_and_flagged():
-    record = make_record(affected_users="department")
-    ai = make_ai_result(affected_scope="individual")     # AI under-estimated
-    result = lm.process_ticket(record, ai)
-    assert result["affected_scope"] == "department"
-    assert result["requires_human_review"] is True
+# ---------- queue order ----------
 
-
-def test_core_banking_keyword_adds_priority():
-    base = dict(work_blocked="yes", workaround_available="no")
-    ai = make_ai_result(category="software", severity="high")
-    banking = lm.process_ticket(make_record(affected_service="Core banking system", **base), ai)
-    other = lm.process_ticket(make_record(affected_service="Shared drive", **base), ai)
-    assert banking["priority_score"] == other["priority_score"] + lm.CRITICAL_SERVICE_POINTS
-
-
-def test_numeric_user_count_still_works():
-    record = make_record(affected_users=200)
-    result = lm.process_ticket(record, make_ai_result(affected_scope="organisation"))
-    assert result["affected_scope"] == "organisation"     # AI value kept
-
-
-# ============================================================
-# ERROR HANDLING (feeds the report's exception handling matrix)
-# ============================================================
-
-def test_invalid_ticket_is_rejected():
-    ai = {"status": "invalid", "reason": "Prompt injection detected."}
-    result = lm.process_ticket(make_record(), ai)
-    assert result["outcome"] == "rejected"
-    assert result["priority"] is None
-    assert result["security_alert"] is False
-
-
-def test_blocked_ticket_is_rejected_with_security_alert():
-    ai = {"status": "blocked", "reason": "Credential request."}
-    result = lm.process_ticket(make_record(), ai)
-    assert result["outcome"] == "rejected"
-    assert result["security_alert"] is True
-
-
-def test_ai_failure_goes_to_manual_triage_not_lost():
-    ai = {"status": "error", "reason": "AI returned no valid classification."}
-    result = lm.process_ticket(make_record(), ai)
-    assert result["outcome"] == "flagged"
-    assert result["priority"] == lm.AI_FAILURE_PRIORITY
-    assert result["assigned_department"] == lm.GENERAL_DEPARTMENT
-    assert result["requires_human_review"] is True
-
-
-def test_success_with_missing_fields_does_not_crash():
-    ai = {"status": "success", "data": {"category": "hardware"}}
-    result = lm.process_ticket(make_record(), ai)
-    assert result["outcome"] == "flagged"
-    assert "missing" in result["decision_reasons"]
-
-
-def test_garbage_ai_result_does_not_crash():
-    for garbage in (None, "oops", 42, [], {}):
-        result = lm.process_ticket(make_record(), garbage)
-        assert result["outcome"] == "flagged"
-
-
-def test_missing_record_fields_do_not_crash():
-    result = lm.process_ticket({}, make_ai_result())
-    assert result["outcome"] in ("routed", "flagged", "escalated")
-
-
-def test_every_decision_has_the_same_keys():
-    # data_manager relies on one consistent layout for every saved record.
-    results = [
-        lm.process_ticket(make_record(), make_ai_result()),
-        lm.process_ticket(make_record(), {"status": "invalid", "reason": "x"}),
-        lm.process_ticket(make_record(), {"status": "error", "reason": "x"}),
+def test_queue_highest_priority_first():
+    tickets = [
+        make_ticket("C", 3, 40, "2026-10-01T09:00"),
+        make_ticket("A", 1, 85, "2026-10-01T10:00"),
+        make_ticket("E", 5, 10, "2026-10-01T08:00"),
+        make_ticket("B", 2, 60, "2026-10-01T11:00"),
+        make_ticket("D", 4, 25, "2026-10-01T07:00"),
     ]
-    assert results[0].keys() == results[1].keys() == results[2].keys()
+    assert [t["ticket_id"] for t in lm.sort_queue(tickets)] == ["A", "B", "C", "D", "E"]
 
 
-def test_same_input_gives_same_output():
-    record, ai = make_record(), make_ai_result(severity="high")
-    assert lm.process_ticket(record, ai) == lm.process_ticket(record, ai)
+def test_queue_higher_score_wins_a_tie():
+    tickets = [make_ticket("low", 2, 50, "a"), make_ticket("high", 2, 65, "b")]
+    assert [t["ticket_id"] for t in lm.sort_queue(tickets)] == ["high", "low"]
 
 
-# ============================================================
-# TEST RUNNER
-# ============================================================
+def test_queue_older_ticket_wins_a_full_tie():
+    tickets = [make_ticket("new", 3, 40, "2026-10-02"), make_ticket("old", 3, 40, "2026-10-01")]
+    assert [t["ticket_id"] for t in lm.sort_queue(tickets)] == ["old", "new"]
 
-def run_all_tests() -> int:
+
+def test_new_ticket_slots_into_place():
+    queue = [make_ticket("P1", 1, 85, "a"), make_ticket("P3", 3, 40, "b")]
+    queue.append(make_ticket("new-P2", 2, 60, "c"))
+    assert [t["ticket_id"] for t in lm.sort_queue(queue)] == ["P1", "new-P2", "P3"]
+
+
+# ---------- test runner ----------
+
+def run_all_tests():
     """Run every test_ function, print PASS/FAIL, return the failure count."""
-    tests = [
-        (name, func)
-        for name, func in sorted(globals().items())
-        if name.startswith("test_") and callable(func)
-    ]
-
+    tests = [(name, f) for name, f in sorted(globals().items())
+             if name.startswith("test_") and callable(f)]
     failures = 0
-    for name, func in tests:
+    for name, test in tests:
         try:
-            func()
+            test()
             print(f"PASS  {name}")
-        except AssertionError:
+        except Exception as error:
             failures += 1
-            print(f"FAIL  {name}")
-        except Exception as error:   # a crash is also a failure
-            failures += 1
-            print(f"ERROR {name}: {error!r}")
-
+            print(f"FAIL  {name}  {error!r}")
     print(f"\n{len(tests) - failures}/{len(tests)} tests passed")
     return failures
 

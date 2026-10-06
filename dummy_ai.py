@@ -4,6 +4,8 @@ Only Gemini is faked (ai_manager.call_api is swapped for fake_call_api).
 Everything else is the real code path: sanitising, security check, rate
 limit, redaction, prompt building, JSON parsing, schema validation and the
 final result dict. Tickets that security_check rejects never reach the fake.
+Successful tickets are then passed through logic_manager (priority, routing).
+Nothing is saved: the demo never touches data/tickets.json.
 
     python main.py --demo
 """
@@ -17,6 +19,7 @@ os.environ.setdefault("GEMINI_API_KEY", "offline-demo-key")
 
 import ai_manager  # noqa: E402
 import io_manager  # noqa: E402
+import logic_manager  # noqa: E402
 import test_ai  # noqa: E402  (reuses its sample tickets and comparison)
 
 # keyword in the (redacted) prompt -> canned model reply
@@ -66,6 +69,10 @@ def run_demo():
 
             if result["status"] == "success":
                 assert ai_manager.validate_response(result["data"]), result
+                decision = logic_manager.process_ticket(result)
+                say(f"  LOGIC: {decision['priority']} (score "
+                    f"{decision['priority_score']}) -> {decision['department']}, "
+                    f"human review: {decision['needs_review']}")
 
             problems = test_ai.matches_expected(result, record["expected"])
             say("  RESULT: " + ("as expected" if not problems

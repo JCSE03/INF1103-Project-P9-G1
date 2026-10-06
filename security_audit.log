@@ -179,3 +179,6 @@
 2026-10-04 12:03:16,843 | user=live-check | event=invalid | reason=Prompt injection or instruction manipulation detected. | len=63 | sha256=100eff4a07de
 2026-10-04 12:03:16,846 | user=live-check | event=blocked | reason=Unauthorised attempt to obtain privileged credentials. | len=50 | sha256=fe4bef32be1a
 2026-10-04 12:03:16,847 | user=live-check | event=invalid | reason=The ticket does not appear to be a helpdesk issue. | len=40 | sha256=f4fd08d3c019
+2026-10-06 11:27:09,955 | user=127.0.0.1 | event=flagged | reason=Privileged account mentioned; needs identity verification. | len=39 | sha256=bdfc68b83c33
+2026-10-06 11:27:34,679 | user=127.0.0.1 | event=error | reason=The AI service is temporarily unavailable. Try again later. | len=39 | sha256=bdfc68b83c33
+2026-10-06 11:37:29,732 | user=127.0.0.1 | event=invalid | reason=Prompt injection or instruction manipulation detected. | len=64 | sha256=aa308897354b

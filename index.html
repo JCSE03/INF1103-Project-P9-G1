@@ -21,6 +21,15 @@
         dl { margin: 0; }
         dt { font-weight: bold; margin-top: 10px; }
         dd { margin: 2px 0 0 0; }
+        .container.wide { max-width: 950px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e3e6ea; vertical-align: top; }
+        th { background: #f4f6f9; }
+        .p1 { color: #b02a37; font-weight: bold; }
+        .p2 { color: #c4630a; font-weight: bold; }
+        .queue-controls { display: flex; gap: 10px; margin-bottom: 15px; }
+        .queue-controls select { width: auto; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .queue-controls button { width: auto; padding: 8px 16px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -42,6 +51,21 @@
 <div class="container" id="result-box">
     <h3 id="result-title">AI Classification Result</h3>
     <div id="result-body"></div>
+</div>
+
+<div class="container wide">
+    <h3>Ticket Queue</h3>
+    <div class="queue-controls">
+        <select id="queueDepartment">
+            <option value="">All departments</option>
+            <option value="Cyber">Cyber</option>
+            <option value="HR">HR</option>
+            <option value="Finance">Finance</option>
+            <option value="Infra">Infra</option>
+        </select>
+        <button type="button" id="refreshBtn">Refresh</button>
+    </div>
+    <div id="queue-body">Loading...</div>
 </div>
 
 <script>
@@ -78,7 +102,11 @@
             addText(body, 'div', 'Flagged: ' + result.flag_reason, 'banner');
         }
         const list = document.createElement('dl');
+        const t = result.ticket;
         const fields = [
+            ['Ticket', t.ticket_id],
+            ['Priority', t.priority + ' (score ' + t.priority_score + ')'],
+            ['Routed to', t.department],
             ['Category', result.data.category],
             ['Severity', result.data.severity],
             ['Affected scope', result.data.affected_scope],
@@ -94,6 +122,47 @@
             addText(body, 'p', 'This ticket will also be reviewed manually.');
         }
     }
+
+    const queueBody = document.getElementById('queue-body');
+
+    async function loadQueue() {
+        const department = document.getElementById('queueDepartment').value;
+        try {
+            const response = await fetch('/queue?department=' + encodeURIComponent(department));
+            const result = await response.json();
+            queueBody.replaceChildren();
+            if (!response.ok) {
+                addText(queueBody, 'p', result.reason || 'Could not load the queue.');
+                return;
+            }
+            if (result.tickets.length === 0) {
+                addText(queueBody, 'p', 'No tickets yet.');
+                return;
+            }
+            const table = document.createElement('table');
+            const head = table.insertRow();
+            for (const name of ['Priority', 'ID', 'Department', 'Category', 'Summary', 'Review']) {
+                addText(head, 'th', name);
+            }
+            for (const t of result.tickets) {
+                const row = table.insertRow();
+                addText(row, 'td', t.priority, t.priority === 'P1' ? 'p1' : (t.priority === 'P2' ? 'p2' : ''));
+                addText(row, 'td', t.ticket_id);
+                addText(row, 'td', t.department);
+                addText(row, 'td', t.category + ' / ' + t.severity + ' / ' + t.affected_scope);
+                addText(row, 'td', t.summary);
+                addText(row, 'td', t.needs_review ? 'Needs review' : '');
+            }
+            queueBody.appendChild(table);
+        } catch (error) {
+            queueBody.replaceChildren();
+            addText(queueBody, 'p', 'Could not connect to the server.');
+        }
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', loadQueue);
+    document.getElementById('queueDepartment').addEventListener('change', loadQueue);
+    loadQueue();
 
     form.addEventListener('submit', async function (e) {
         e.preventDefault(); // stop the page from refreshing
@@ -114,7 +183,9 @@
                 })
             });
             const result = await response.json();
-            showResult(result, response.ok && result.status === 'success');
+            const ok = response.ok && result.status === 'success';
+            showResult(result, ok);
+            if (ok) loadQueue();
         } catch (error) {
             showResult({ reason: 'Could not connect to the server.' }, false);
         } finally {

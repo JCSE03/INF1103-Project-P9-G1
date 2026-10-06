@@ -1,16 +1,20 @@
 """Entry point for the AI Helpdesk Ticket system.
 
 main.py only wires the modules together; the work happens in them:
-    io_manager  - web page + routes + console output (serves index.html)
-    ai_manager  - security checks, redaction, Gemini call, validation
-    test_ai     - offline unit tests and an optional live Gemini check
-    dummy_ai    - demo run of ai_manager with a fake Gemini (no key needed)
+    io_manager    - web page + routes + console output (serves index.html);
+                    sends each ticket through the three managers below
+    ai_manager    - security checks, redaction, Gemini call, validation
+    logic_manager - priority score, P1-P5, department routing, review flag
+    data_manager  - saves and loads tickets.json, filter query
+    test_ai, test_logic_manager, test_data_manager - offline unit tests
+                    (test_ai also has an optional live Gemini check)
+    dummy_ai      - demo run with a fake Gemini (no key needed)
 
 Usage:
     python main.py                  start the web app and open the browser
     python main.py --no-browser     start the web app without opening a browser
     python main.py --port 8000      use a different port
-    python main.py --test           run the offline unit tests only
+    python main.py --test           run all the offline unit tests
     python main.py --test --live    offline tests, then the live Gemini check
     python main.py --demo           dummy output: real pipeline, fake Gemini
 """
@@ -37,13 +41,20 @@ def parse_args(argv=None):
 
 
 def run_tests(live=False):
-    # Imported here so test_ai can supply a dummy API key when none is set.
+    # test_ai is imported first: it supplies a dummy API key when none is set.
     import test_ai
+    import test_data_manager
+    import test_logic_manager
 
     try:
         test_ai.run_offline_tests()
     except AssertionError as error:
         sys.exit(f"Offline test FAILED: {error!r}")
+
+    failures = test_logic_manager.run_all_tests() + test_data_manager.run_all_tests()
+    if failures:
+        sys.exit(f"{failures} test(s) FAILED")
+
     if live:
         test_ai.run_live_check()
 

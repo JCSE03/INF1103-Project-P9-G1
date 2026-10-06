@@ -1,16 +1,23 @@
 """I/O Manager: every boundary with the outside world (web page, console).
 
-It holds no AI logic: tickets are handed to ai_manager.classify_ticket, which
-does the security checks, redaction, API call, parsing and validation.
+It holds no business rules, AI or file code. For each ticket it calls:
+    ai_manager.classify_ticket   security checks, redaction, Gemini, validation
+    logic_manager.process_ticket priority, department, review flag
+    data_manager.add_record      saves the decision
+and for the queue view:
+    data_manager.find_records + logic_manager.sort_queue
 """
 
 import os
 import webbrowser
-from threading import Timer
+from datetime import datetime, timezone
+from threading import Lock, Timer
 
 from flask import Flask, jsonify, render_template, request
 
 import ai_manager
+import data_manager
+import logic_manager
 
 # Look for index.html in the same folder as this file, wherever we are run from.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -24,6 +31,15 @@ STATUS_CODES = {
     "rate_limited": 429,
     "error": 503,
 }
+
+
+# Requests are handled on several threads; only one may read-modify-write
+# the ticket file at a time, or two tickets could overwrite each other.
+_data_lock = Lock()
+
+
+def _error(reason, code):
+    return jsonify({"status": "error", "reason": reason, "manual_review": True}), code
 
 
 # ==========================================
@@ -59,7 +75,54 @@ def submit_ticket():
     result = ai_manager.classify_ticket(form_data, user_id=user_id)
     print_message(f"Ticket from {user_id}: {result['status']}")
 
-    return jsonify(result), STATUS_CODES.get(result["status"], 500)
+    # Rejected, blocked, rate-limited or failed tickets are reported, not saved.
+    if result["status"] != "success":
+        return jsonify(result), STATUS_CODES.get(result["status"], 500)
+
+    # Business rules: priority, department, human-review flag.
+    decision = logic_manager.process_ticket(result)
+
+    # Save. Only the AI's summary is stored, never the raw ticket text,
+    # which may contain details ai_manager redacted before the API call.
+    with _data_lock:
+        records = data_manager.load_records()
+        if records is None:
+            # Unreadable file: do NOT save, or the old data would be overwritten.
+            print_message("tickets.json is unreadable; ticket was NOT saved.")
+            return _error("Ticket data file could not be read, so the ticket was not saved.", 503)
+
+        ticket = {
+            "ticket_id": f"T-{len(records) + 1:04d}",
+            "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            **decision,
+        }
+        if not data_manager.add_record(records, ticket):
+            print_message("Could not write tickets.json; ticket was NOT saved.")
+            return _error("The ticket could not be saved. Please try again.", 503)
+
+    print_message(f"Saved {ticket['ticket_id']}: {ticket['priority']} -> {ticket['department']}")
+
+    result["ticket"] = ticket
+    result["manual_review"] = bool(result.get("manual_review") or ticket["needs_review"])
+    return jsonify(result), 200
+
+
+@app.route("/queue")
+def queue():
+    """Saved tickets, most urgent first. Optional ?department=Cyber|HR|Finance|Infra."""
+    department = request.args.get("department")
+    if department and department not in logic_manager.DEPARTMENTS:
+        return _error("Unknown department.", 400)
+
+    with _data_lock:
+        records = data_manager.load_records()
+    if records is None:
+        return _error("Ticket data file could not be read.", 503)
+
+    if department:
+        records = data_manager.find_records(records, "department", department)
+
+    return jsonify({"status": "success", "tickets": logic_manager.sort_queue(records)})
 
 
 # ==========================================

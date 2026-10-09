@@ -85,7 +85,10 @@ def log_from_api_error(error):
 
 
 def api_error(name, code, status, message):
-    return type(name, (Exception,), {"code": code, "status": status})(message)
+    error = Exception(message)
+    error.code = code
+    error.status = status
+    return error
 
 
 # --- 1. OFFLINE UNIT TESTS ---------------------------------------------

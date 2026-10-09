@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Helpdesk Dashboard</title>
+    <style>
+        :root {
+            --navy: #102a43;
+            --blue: #1769aa;
+            --blue-soft: #eaf4ff;
+            --ink: #243b53;
+            --muted: #627d98;
+            --line: #d9e2ec;
+            --page: #f5f8fb;
+            --card: #ffffff;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            color: var(--ink);
+            background: var(--page);
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 20px max(24px, calc((100vw - 1160px) / 2));
+            color: white;
+            background: var(--navy);
+        }
+
+        .topbar h1 { margin: 0; font-size: 21px; }
+        .topbar p { margin: 4px 0 0; color: #bcccdc; font-size: 13px; }
+
+        .live-status {
+            padding: 8px 11px;
+            color: #d9e2ec;
+            border: 1px solid rgba(255, 255, 255, .25);
+            border-radius: 999px;
+            font-size: 13px;
+        }
+
+        main {
+            max-width: 1160px;
+            margin: 0 auto;
+            padding: 32px 24px 50px;
+        }
+
+        h2, h3, h4 { color: var(--navy); }
+
+        .toolbar, .queue-summary, .ticket-card, .empty-state {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(16, 42, 67, .05);
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 18px;
+            margin: 22px 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 7px;
+            color: var(--navy);
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        select {
+            min-width: 230px;
+            padding: 10px;
+            font: inherit;
+            border: 1px solid #bcccdc;
+            border-radius: 7px;
+        }
+
+        a { color: var(--blue); }
+
+        .queue-summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1px;
+            overflow: hidden;
+            margin-bottom: 28px;
+            background: var(--line);
+        }
+
+        .queue-stat {
+            padding: 16px;
+            background: white;
+        }
+
+        .queue-stat strong {
+            display: block;
+            margin-top: 4px;
+            color: var(--navy);
+            font-size: 25px;
+        }
+
+        .queue-stat span {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .ticket-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .ticket-card { overflow: hidden; }
+
+        .ticket-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 13px 18px;
+            color: #0c5132;
+            background: #e8f7ef;
+            border-bottom: 1px solid #c2ebd2;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .ticket-body { padding: 20px; }
+        .ticket-title { margin: 0 0 16px; font-size: 20px; }
+
+        .ticket-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 20px;
+        }
+
+        .field + .field { margin-top: 14px; }
+
+        .field-label {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+
+        .field-value {
+            margin: 0;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .classification {
+            padding: 15px;
+            background: var(--blue-soft);
+            border: 1px solid #cde4fa;
+            border-radius: 9px;
+        }
+
+        .classification-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .classification-item {
+            padding: 9px;
+            background: rgba(255, 255, 255, .75);
+            border-radius: 6px;
+        }
+
+        .classification-item strong {
+            display: block;
+            margin-bottom: 3px;
+            color: #486581;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+
+        .empty-state {
+            padding: 38px 24px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .hidden { display: none; }
+
+        @media (max-width: 720px) {
+            .topbar, .toolbar { align-items: flex-start; flex-direction: column; }
+            .queue-summary, .ticket-grid, .classification-grid { grid-template-columns: 1fr; }
+            select { width: 100%; }
+        }
+    </style>
+</head>
+<body data-initial-department="{{ initial_department }}">
+    <header class="topbar">
+        <div>
+            <h1>IT Helpdesk</h1>
+            <p>AI-classified ticket queues</p>
+        </div>
+        <div class="live-status" id="live-status">Checking for updates…</div>
+    </header>
+
+    <main>
+        <h2 id="page-title">Helpdesk dashboard</h2>
+        <p id="page-description">Review incoming tickets and their AI classifications.</p>
+
+        <section class="toolbar">
+            <div>
+                <label for="department-filter">Department queue</label>
+                <select id="department-filter">
+                    <option value="all">All departments</option>
+                    {% for department in departments %}
+                    <option value="{{ department }}">{{ department }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <a href="/">← Submit a new ticket</a>
+        </section>
+
+        <section class="queue-summary" id="queue-summary"></section>
+
+        <section>
+            <h3 id="tickets-heading">Tickets</h3>
+            <div class="ticket-list" id="ticket-list"></div>
+
+            <div class="empty-state hidden" id="empty-state">
+                <h4>No tickets in this queue</h4>
+                <p>New tickets routed here will appear automatically.</p>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const initialDepartment = document.body.dataset.initialDepartment;
+        const departmentFilter = document.getElementById("department-filter");
+        const ticketList = document.getElementById("ticket-list");
+        const emptyState = document.getElementById("empty-state");
+        const departments = ["Cyber", "Finance", "HR", "Infra"];
+
+        departmentFilter.value = initialDepartment;
+
+        function text(value, fallback = "Not provided") {
+            return value === undefined || value === null || value === ""
+                ? fallback
+                : String(value);
+        }
+
+        function updatePageHeading(department) {
+            const title = document.getElementById("page-title");
+            const description = document.getElementById("page-description");
+            const heading = document.getElementById("tickets-heading");
+
+            if (department === "all") {
+                title.textContent = "Helpdesk dashboard";
+                description.textContent = "Review tickets across every department.";
+                heading.textContent = "All tickets";
+            } else {
+                title.textContent = `${department} department queue`;
+                description.textContent = `Tickets currently routed to the ${department} department.`;
+                heading.textContent = `${department} tickets`;
+            }
+        }
+
+        function queueCard(label, count) {
+            const card = document.createElement("div");
+            card.className = "queue-stat";
+
+            const labelElement = document.createElement("span");
+            labelElement.textContent = label;
+
+            const countElement = document.createElement("strong");
+            countElement.textContent = count;
+
+            card.append(labelElement, countElement);
+            return card;
+        }
+
+        function renderQueue(queue) {
+            const summary = document.getElementById("queue-summary");
+            summary.replaceChildren();
+
+            if (departmentFilter.value === "all") {
+                departments.forEach((department) => {
+                    const details = queue.departments[department] || { queued: 0 };
+                    summary.appendChild(queueCard(`${department} queued`, details.queued));
+                });
+            } else {
+                const details = queue.departments[departmentFilter.value] || { queued: 0 };
+                summary.appendChild(queueCard("Queued tickets", details.queued));
+                summary.appendChild(queueCard("All department tickets", details.total));
+            }
+        }
+
+        function addField(container, label, value) {
+            const field = document.createElement("div");
+            field.className = "field";
+
+            const fieldLabel = document.createElement("span");
+            fieldLabel.className = "field-label";
+            fieldLabel.textContent = label;
+
+            const fieldValue = document.createElement("p");
+            fieldValue.className = "field-value";
+            fieldValue.textContent = text(value);
+
+            field.append(fieldLabel, fieldValue);
+            container.appendChild(field);
+        }
+
+        function addClassificationItem(container, label, value) {
+            const item = document.createElement("div");
+            item.className = "classification-item";
+
+            const title = document.createElement("strong");
+            title.textContent = label;
+
+            const content = document.createElement("span");
+            content.textContent = text(value);
+
+            item.append(title, content);
+            container.appendChild(item);
+        }
+
+        function renderTicket(ticket) {
+            const result = ticket.result || {};
+            const card = document.createElement("article");
+            card.className = "ticket-card";
+
+            const banner = document.createElement("div");
+            banner.className = "ticket-banner";
+            banner.innerHTML = "<span></span><span></span>";
+            banner.children[0].textContent = `${text(result.department)} · ${text(result.queue_status)}`;
+            banner.children[1].textContent = `${text(ticket.ticket_id)} · Queue position ${text(ticket.queue_position)}`;
+
+            const body = document.createElement("div");
+            body.className = "ticket-body";
+
+            const title = document.createElement("h4");
+            title.className = "ticket-title";
+            title.textContent = text(ticket.ticket_title, "Untitled ticket");
+
+            const grid = document.createElement("div");
+            grid.className = "ticket-grid";
+
+            const details = document.createElement("div");
+            addField(details, "Submitted by", ticket.name);
+            addField(details, "Contact number", ticket.contact_number);
+            addField(details, "Problem description", ticket.problem_description);
+            addField(details, "Affected users", ticket.affected_users);
+            addField(details, "Work blocked", ticket.work_blocked);
+            addField(details, "Workaround available", ticket.workaround_available);
+
+            const classification = document.createElement("aside");
+            classification.className = "classification";
+
+            const classificationTitle = document.createElement("h4");
+            classificationTitle.textContent = "AI classification";
+
+            const classificationGrid = document.createElement("div");
+            classificationGrid.className = "classification-grid";
+
+            addClassificationItem(classificationGrid, "Category", result.category);
+            addClassificationItem(classificationGrid, "Severity", result.severity);
+            addClassificationItem(classificationGrid, "Affected scope", result.affected_scope);
+            addClassificationItem(classificationGrid, "Confidence", result.confidence_score);
+            addClassificationItem(classificationGrid, "Department", result.department);
+            addClassificationItem(classificationGrid, "Summary", result.summary);
+
+            classification.append(classificationTitle, classificationGrid);
+            grid.append(details, classification);
+            body.append(title, grid);
+            card.append(banner, body);
+
+            ticketList.appendChild(card);
+        }
+
+        async function loadTickets() {
+            const department = departmentFilter.value;
+            updatePageHeading(department);
+
+            try {
+                const response = await fetch(
+                    `/api/tickets?department=${encodeURIComponent(department)}`,
+                    { cache: "no-store" }
+                );
+
+                if (!response.ok) throw new Error("Unable to load tickets");
+
+                const data = await response.json();
+                ticketList.replaceChildren();
+                renderQueue(data.queue);
+
+                data.tickets.forEach(renderTicket);
+                emptyState.classList.toggle("hidden", data.tickets.length > 0);
+                document.getElementById("live-status").textContent = "Live updates active";
+            } catch {
+                document.getElementById("live-status").textContent =
+                    "Unable to load queue updates";
+            }
+        }
+
+        departmentFilter.addEventListener("change", () => {
+            const department = departmentFilter.value;
+            window.location.assign(
+                department === "all"
+                    ? "/helpdesk"
+                    : `/departments/${encodeURIComponent(department)}`
+            );
+        });
+
+        loadTickets();
+        window.setInterval(loadTickets, 5000);
+    </script>
+</body>
+</html>

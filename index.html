@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Support Request</title>
+
+    <style>
+        :root {
+            --navy: #102a43;
+            --blue: #1769aa;
+            --blue-dark: #0f4f82;
+            --page: #eef4f8;
+            --card: #ffffff;
+            --line: #d9e2ec;
+            --text: #243b53;
+            --muted: #627d98;
+            --success-bg: #e8f7ef;
+            --success-text: #0c5132;
+            --error-bg: #fdecec;
+            --error-text: #8a1c1c;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            margin: 0;
+            padding: 40px 18px;
+            font-family: Arial, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top right, #d7ecff 0, transparent 36%),
+                var(--page);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 620px;
+            margin: 0 auto;
+            overflow: hidden;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: 0 18px 45px rgba(16, 42, 67, 0.12);
+        }
+
+        .header {
+            padding: 30px 34px 25px;
+            color: white;
+            background: linear-gradient(135deg, var(--navy), var(--blue));
+        }
+
+        .header-icon {
+            display: grid;
+            width: 44px;
+            height: 44px;
+            margin-bottom: 14px;
+            place-items: center;
+            font-size: 22px;
+            background: rgba(255, 255, 255, 0.16);
+            border-radius: 12px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 26px;
+        }
+
+        .header p {
+            margin: 8px 0 0;
+            color: #d9eafd;
+            line-height: 1.5;
+        }
+
+        form {
+            padding: 12px 34px 34px;
+        }
+
+        label {
+            display: block;
+            margin: 18px 0 7px;
+            color: var(--navy);
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        input,
+        textarea,
+        select {
+            width: 100%;
+            padding: 12px;
+            color: var(--text);
+            font: inherit;
+            background: white;
+            border: 1px solid #bcccdc;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            border-color: var(--blue);
+            box-shadow: 0 0 0 3px rgba(23, 105, 170, 0.14);
+        }
+
+        textarea {
+            min-height: 145px;
+            resize: vertical;
+        }
+
+        textarea::placeholder {
+            color: #829ab1;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 26px;
+            padding: 13px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            background: var(--blue);
+            border: none;
+            border-radius: 8px;
+            transition: background 0.15s, transform 0.15s;
+        }
+
+        button:hover {
+            background: var(--blue-dark);
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.7;
+            transform: none;
+        }
+
+        #result-box {
+            display: none;
+            margin-top: 20px;
+            padding: 13px 14px;
+            border-radius: 8px;
+            line-height: 1.45;
+        }
+
+        #result-box.success {
+            color: var(--success-text);
+            background: var(--success-bg);
+            border: 1px solid #c2ebd2;
+        }
+
+        #result-box.error {
+            color: var(--error-text);
+            background: var(--error-bg);
+            border: 1px solid #f5c2c7;
+        }
+
+        @media (max-width: 560px) {
+            body {
+                padding: 20px 12px;
+            }
+
+            .header,
+            form {
+                padding-right: 22px;
+                padding-left: 22px;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="container">
+        <header class="header">
+            <div class="header-icon">?</div>
+            <h1>IT Support Request</h1>
+            <p>Tell us what you need help with and our support team will review your request.</p>
+        </header>
+
+        <form id="ticket-form">
+            <label for="ticket_title">Ticket Title</label>
+            <input
+                type="text"
+                id="ticket_title"
+                name="ticket_title"
+                placeholder="For example: Unable to connect to VPN"
+                required
+            >
+
+            <div class="form-row">
+                <div>
+                    <label for="name">Name</label>
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        autocomplete="name"
+                        required
+                    >
+                </div>
+
+                <div>
+                    <label for="contact_number">Contact Number</label>
+                    <input
+                        type="tel"
+                        id="contact_number"
+                        name="contact_number"
+                        autocomplete="tel"
+                        required
+                    >
+                </div>
+            </div>
+
+            <label for="problem_description">Problem Description</label>
+            <textarea
+                id="problem_description"
+                name="problem_description"
+                placeholder="Please describe the issue, including any error messages you see."
+                required
+            ></textarea>
+
+            <label for="affected_users">Affected Users</label>
+            <select id="affected_users" name="affected_users" required>
+                <option value="">Please select</option>
+                <option value="individual">Individual</option>
+                <option value="multiple_users">Multiple Users</option>
+                <option value="department">Department</option>
+                <option value="organisation">Organisation</option>
+            </select>
+
+            <div class="form-row">
+                <div>
+                    <label for="work_blocked">Is work blocked?</label>
+                    <select id="work_blocked" name="work_blocked" required>
+                        <option value="">Please select</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="workaround_available">Is a workaround available?</label>
+                    <select id="workaround_available" name="workaround_available" required>
+                        <option value="">Please select</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" id="submit-button">Submit Support Request</button>
+
+            <div id="result-box" role="status" aria-live="polite"></div>
+        </form>
+    </main>
+
+    <script>
+        const form = document.getElementById("ticket-form");
+        const button = document.getElementById("submit-button");
+        const resultBox = document.getElementById("result-box");
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            button.textContent = "Submitting Request…";
+            button.disabled = true;
+            resultBox.style.display = "none";
+            resultBox.className = "";
+
+            const ticketData = {
+                ticket_title: document.getElementById("ticket_title").value,
+                name: document.getElementById("name").value,
+                contact_number: document.getElementById("contact_number").value,
+                problem_description: document.getElementById("problem_description").value,
+                affected_users: document.getElementById("affected_users").value,
+                work_blocked: document.getElementById("work_blocked").value,
+                workaround_available: document.getElementById("workaround_available").value
+            };
+
+            try {
+                const response = await fetch("/submit-ticket", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(ticketData)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Could not submit the support request.");
+                }
+
+                form.reset();
+                resultBox.textContent =
+                    "Your support request has been submitted successfully. Our IT team will be in touch.";
+                resultBox.className = "success";
+                resultBox.style.display = "block";
+            } catch (error) {
+                resultBox.textContent = `Error: ${error.message}`;
+                resultBox.className = "error";
+                resultBox.style.display = "block";
+            } finally {
+                button.textContent = "Submit Support Request";
+                button.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

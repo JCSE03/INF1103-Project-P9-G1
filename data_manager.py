@@ -56,3 +56,21 @@ def find_records(records, field, value):
     """Query: every record whose `field` equals `value`
     e.g. find_records(records, "department", "Cyber")."""
     return [record for record in records if record.get(field) == value]
+
+def resolve_ticket(records, ticket_id, resolved_at_timestamp):
+    """Find a ticket by ID, mark it resolved, and save."""
+    for ticket in records:
+        if ticket.get("ticket_id") == ticket_id:
+            ticket["is_resolved"] = True
+            ticket["resolved_at"] = resolved_at_timestamp
+            return save_records(records)
+    return False
+
+def toggle_ticket_resolution(records, ticket_id, is_resolved, resolved_at_timestamp=None):
+    """Toggle a ticket's resolution status and save."""
+    for ticket in records:
+        if ticket.get("ticket_id") == ticket_id:
+            ticket["is_resolved"] = is_resolved
+            ticket["resolved_at"] = resolved_at_timestamp if is_resolved else None
+            return save_records(records)
+    return False

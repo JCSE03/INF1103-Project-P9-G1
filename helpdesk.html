@@ -14,6 +14,8 @@
             --line: #d9e2ec;
             --page: #f5f8fb;
             --card: #ffffff;
+            --success-bg: #e8f7ef;
+            --success-text: #0c5132;
         }
 
         * { box-sizing: border-box; }
@@ -30,7 +32,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 18px;
-            padding: 20px max(24px, calc((100vw - 1160px) / 2));
+            padding: 20px 24px;
             color: white;
             background: var(--navy);
         }
@@ -47,7 +49,7 @@
         }
 
         main {
-            max-width: 1160px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 32px 24px 50px;
         }
@@ -114,6 +116,33 @@
             font-size: 13px;
         }
 
+        /* Split Columns Layout */
+        .dashboard-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            align-items: start;
+        }
+
+        .column-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--line);
+        }
+
+        .column-header h3 { margin: 0; }
+        .ticket-count-badge {
+            background: var(--blue-soft);
+            color: var(--blue);
+            font-size: 12px;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+
         .ticket-list {
             display: grid;
             gap: 16px;
@@ -130,26 +159,77 @@
             color: #0c5132;
             background: #e8f7ef;
             border-bottom: 1px solid #c2ebd2;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: bold;
         }
 
-        .ticket-body { padding: 20px; }
-        .ticket-title { margin: 0 0 16px; font-size: 20px; }
+        .ticket-card.is-resolved .ticket-banner {
+            background: #f0f4f8;
+            color: #486581;
+            border-bottom-color: #d9e2ec;
+        }
+
+        .ticket-body { padding: 18px; }
+        
+        .ticket-header-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .ticket-title { margin: 0; font-size: 18px; }
+
+        .resolve-btn {
+            padding: 6px 12px;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            background: #27ab83;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .resolve-btn:hover { background: #198754; }
+
+        .unresolve-btn {
+            padding: 6px 12px;
+            color: var(--ink);
+            font-size: 12px;
+            font-weight: bold;
+            background: #e4e7eb;
+            border: 1px solid #cbd2d9;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .unresolve-btn:hover { background: #cbd2d9; }
+
+        .resolved-info {
+            display: block;
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: normal;
+        }
 
         .ticket-grid {
             display: grid;
-            grid-template-columns: 1.2fr 1fr;
-            gap: 20px;
+            grid-template-columns: 1fr;
+            gap: 16px;
         }
 
-        .field + .field { margin-top: 14px; }
+        .field + .field { margin-top: 10px; }
 
         .field-label {
             display: block;
-            margin-bottom: 4px;
+            margin-bottom: 2px;
             color: var(--muted);
-            font-size: 11px;
+            font-size: 10px;
             font-weight: bold;
             letter-spacing: .06em;
             text-transform: uppercase;
@@ -157,50 +237,52 @@
 
         .field-value {
             margin: 0;
-            line-height: 1.5;
+            font-size: 13px;
+            line-height: 1.4;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
         }
 
         .classification {
-            padding: 15px;
+            padding: 12px;
             background: var(--blue-soft);
             border: 1px solid #cde4fa;
-            border-radius: 9px;
+            border-radius: 8px;
         }
 
         .classification-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
+            gap: 8px;
         }
 
         .classification-item {
-            padding: 9px;
+            padding: 8px;
             background: rgba(255, 255, 255, .75);
             border-radius: 6px;
         }
 
         .classification-item strong {
             display: block;
-            margin-bottom: 3px;
+            margin-bottom: 2px;
             color: #486581;
-            font-size: 10px;
+            font-size: 9px;
             text-transform: uppercase;
         }
 
+        .classification-item span { font-size: 12px; }
+
         .empty-state {
-            padding: 38px 24px;
+            padding: 28px 16px;
             color: var(--muted);
             text-align: center;
+            font-size: 14px;
         }
 
         .hidden { display: none; }
 
-        @media (max-width: 720px) {
-            .topbar, .toolbar { align-items: flex-start; flex-direction: column; }
-            .queue-summary, .ticket-grid, .classification-grid { grid-template-columns: 1fr; }
-            select { width: 100%; }
+        @media (max-width: 960px) {
+            .dashboard-columns { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -232,59 +314,51 @@
 
         <section class="queue-summary" id="queue-summary"></section>
 
-        <section>
-            <h3 id="tickets-heading">Tickets</h3>
-            <div class="ticket-list" id="ticket-list"></div>
+        <!-- Columned Layout -->
+        <div class="dashboard-columns">
+            <!-- Active Tickets Column -->
+            <section>
+                <div class="column-header">
+                    <h3>Active Tickets</h3>
+                    <span class="ticket-count-badge" id="active-count">0</span>
+                </div>
+                <div class="ticket-list" id="active-ticket-list"></div>
+                <div class="empty-state hidden" id="active-empty-state">No active tickets</div>
+            </section>
 
-            <div class="empty-state hidden" id="empty-state">
-                <h4>No tickets in this queue</h4>
-                <p>New tickets routed here will appear automatically.</p>
-            </div>
-        </section>
+            <!-- Resolved Tickets Column -->
+            <section>
+                <div class="column-header">
+                    <h3>Resolved Tickets</h3>
+                    <span class="ticket-count-badge" id="resolved-count">0</span>
+                </div>
+                <div class="ticket-list" id="resolved-ticket-list"></div>
+                <div class="empty-state hidden" id="resolved-empty-state">No resolved tickets</div>
+            </section>
+        </div>
     </main>
 
     <script>
         const initialDepartment = document.body.dataset.initialDepartment;
         const departmentFilter = document.getElementById("department-filter");
-        const ticketList = document.getElementById("ticket-list");
-        const emptyState = document.getElementById("empty-state");
+        const activeList = document.getElementById("active-ticket-list");
+        const resolvedList = document.getElementById("resolved-ticket-list");
+        const activeEmpty = document.getElementById("active-empty-state");
+        const resolvedEmpty = document.getElementById("resolved-empty-state");
+        const activeCount = document.getElementById("active-count");
+        const resolvedCount = document.getElementById("resolved-count");
         const departments = ["Cyber", "Finance", "HR", "Infra"];
 
         departmentFilter.value = initialDepartment;
 
         function text(value, fallback = "Not provided") {
-            return value === undefined || value === null || value === ""
-                ? fallback
-                : String(value);
-        }
-
-        function updatePageHeading(department) {
-            const title = document.getElementById("page-title");
-            const description = document.getElementById("page-description");
-            const heading = document.getElementById("tickets-heading");
-
-            if (department === "all") {
-                title.textContent = "Helpdesk dashboard";
-                description.textContent = "Review tickets across every department.";
-                heading.textContent = "All tickets";
-            } else {
-                title.textContent = `${department} department queue`;
-                description.textContent = `Tickets currently routed to the ${department} department.`;
-                heading.textContent = `${department} tickets`;
-            }
+            return value === undefined || value === null || value === "" ? fallback : String(value);
         }
 
         function queueCard(label, count) {
             const card = document.createElement("div");
             card.className = "queue-stat";
-
-            const labelElement = document.createElement("span");
-            labelElement.textContent = label;
-
-            const countElement = document.createElement("strong");
-            countElement.textContent = count;
-
-            card.append(labelElement, countElement);
+            card.innerHTML = `<span>${label}</span><strong>${count}</strong>`;
             return card;
         }
 
@@ -307,89 +381,110 @@
         function addField(container, label, value) {
             const field = document.createElement("div");
             field.className = "field";
-
-            const fieldLabel = document.createElement("span");
-            fieldLabel.className = "field-label";
-            fieldLabel.textContent = label;
-
-            const fieldValue = document.createElement("p");
-            fieldValue.className = "field-value";
-            fieldValue.textContent = text(value);
-
-            field.append(fieldLabel, fieldValue);
+            field.innerHTML = `<span class="field-label">${label}</span><p class="field-value">${text(value)}</p>`;
             container.appendChild(field);
         }
 
         function addClassificationItem(container, label, value) {
             const item = document.createElement("div");
             item.className = "classification-item";
-
-            const title = document.createElement("strong");
-            title.textContent = label;
-
-            const content = document.createElement("span");
-            content.textContent = text(value);
-
-            item.append(title, content);
+            item.innerHTML = `<strong>${label}</strong><span>${text(value)}</span>`;
             container.appendChild(item);
+        }
+
+        async function toggleResolution(ticketId, targetStatus) {
+            try {
+                const response = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/toggle-resolution`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ is_resolved: targetStatus })
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    alert(data.error || "Action failed.");
+                    return;
+                }
+
+                loadTickets();
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
         }
 
         function renderTicket(ticket) {
             const result = ticket.result || {};
             const card = document.createElement("article");
-            card.className = "ticket-card";
+            card.className = `ticket-card ${ticket.is_resolved ? 'is-resolved' : ''}`;
 
             const banner = document.createElement("div");
             banner.className = "ticket-banner";
-            banner.innerHTML = "<span></span><span></span>";
-            banner.children[0].textContent = `${text(result.department)} · ${text(result.queue_status)}`;
-            banner.children[1].textContent = `${text(ticket.ticket_id)} · Queue position ${text(ticket.queue_position)}`;
+            banner.innerHTML = `
+                <span>${text(result.department)} · ${text(result.queue_status)}</span>
+                <span>${text(ticket.ticket_id)} · Position ${text(ticket.queue_position)}</span>
+            `;
 
             const body = document.createElement("div");
             body.className = "ticket-body";
 
+            const headerRow = document.createElement("div");
+            headerRow.className = "ticket-header-row";
+
             const title = document.createElement("h4");
             title.className = "ticket-title";
             title.textContent = text(ticket.ticket_title, "Untitled ticket");
+
+            const actionBtn = document.createElement("button");
+            if (ticket.is_resolved) {
+                actionBtn.className = "unresolve-btn";
+                actionBtn.textContent = "Unresolve";
+                actionBtn.onclick = () => toggleResolution(ticket.ticket_id, false);
+            } else {
+                actionBtn.className = "resolve-btn";
+                actionBtn.textContent = "Mark as resolved";
+                actionBtn.onclick = () => toggleResolution(ticket.ticket_id, true);
+            }
+
+            const actionContainer = document.createElement("div");
+            actionContainer.appendChild(actionBtn);
+
+            if (ticket.is_resolved && ticket.resolved_at) {
+                const info = document.createElement("span");
+                info.className = "resolved-info";
+                info.textContent = `Resolved: ${new Date(ticket.resolved_at).toLocaleString()}`;
+                actionContainer.appendChild(info);
+            }
+
+            headerRow.append(title, actionContainer);
 
             const grid = document.createElement("div");
             grid.className = "ticket-grid";
 
             const details = document.createElement("div");
             addField(details, "Submitted by", ticket.name);
-            addField(details, "Contact number", ticket.contact_number);
-            addField(details, "Problem description", ticket.problem_description);
-            addField(details, "Affected users", ticket.affected_users);
-            addField(details, "Work blocked", ticket.work_blocked);
-            addField(details, "Workaround available", ticket.workaround_available);
+            addField(details, "Contact", ticket.contact_number);
+            addField(details, "Description", ticket.problem_description);
 
             const classification = document.createElement("aside");
             classification.className = "classification";
-
-            const classificationTitle = document.createElement("h4");
-            classificationTitle.textContent = "AI classification";
-
             const classificationGrid = document.createElement("div");
             classificationGrid.className = "classification-grid";
 
             addClassificationItem(classificationGrid, "Category", result.category);
             addClassificationItem(classificationGrid, "Severity", result.severity);
-            addClassificationItem(classificationGrid, "Affected scope", result.affected_scope);
-            addClassificationItem(classificationGrid, "Confidence", result.confidence_score);
+            addClassificationItem(classificationGrid, "Scope", result.affected_scope);
             addClassificationItem(classificationGrid, "Department", result.department);
-            addClassificationItem(classificationGrid, "Summary", result.summary);
 
-            classification.append(classificationTitle, classificationGrid);
+            classification.appendChild(classificationGrid);
             grid.append(details, classification);
-            body.append(title, grid);
+            body.append(headerRow, grid);
             card.append(banner, body);
 
-            ticketList.appendChild(card);
+            return card;
         }
 
         async function loadTickets() {
             const department = departmentFilter.value;
-            updatePageHeading(department);
 
             try {
                 const response = await fetch(
@@ -400,15 +495,25 @@
                 if (!response.ok) throw new Error("Unable to load tickets");
 
                 const data = await response.json();
-                ticketList.replaceChildren();
+                activeList.replaceChildren();
+                resolvedList.replaceChildren();
                 renderQueue(data.queue);
 
-                data.tickets.forEach(renderTicket);
-                emptyState.classList.toggle("hidden", data.tickets.length > 0);
+                const activeTickets = data.tickets.filter(t => !t.is_resolved);
+                const resolvedTickets = data.tickets.filter(t => t.is_resolved);
+
+                activeCount.textContent = activeTickets.length;
+                resolvedCount.textContent = resolvedTickets.length;
+
+                activeTickets.forEach(ticket => activeList.appendChild(renderTicket(ticket)));
+                resolvedTickets.forEach(ticket => resolvedList.appendChild(renderTicket(ticket)));
+
+                activeEmpty.classList.toggle("hidden", activeTickets.length > 0);
+                resolvedEmpty.classList.toggle("hidden", resolvedTickets.length > 0);
+
                 document.getElementById("live-status").textContent = "Live updates active";
             } catch {
-                document.getElementById("live-status").textContent =
-                    "Unable to load queue updates";
+                document.getElementById("live-status").textContent = "Unable to load queue updates";
             }
         }
 

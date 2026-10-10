@@ -37,7 +37,7 @@ def queue_summary(records):
             "total": len(department_records),
             "queued": len([
                 ticket for ticket in department_records
-                if ticket.get("result", {}).get("queue_status") == "Queued"
+                if ticket.get("result", {}).get("queue_status") == "Queued" and not ticket.get("is_resolved", False)
             ]),
         }
 
@@ -45,7 +45,7 @@ def queue_summary(records):
         "total": len(records),
         "queued": len([
             ticket for ticket in records
-            if ticket.get("result", {}).get("queue_status") == "Queued"
+            if ticket.get("result", {}).get("queue_status") == "Queued" and not ticket.get("is_resolved", False)
         ]),
         "departments": departments,
     }
@@ -164,6 +164,8 @@ def submit_ticket():
         "affected_users": form_data["affected_users"],
         "work_blocked": form_data["work_blocked"],
         "workaround_available": form_data["workaround_available"],
+        "is_resolved": False,
+        "resolved_at": None,
         "result": result,
         "queue_position": len(department_tickets_before_submission) + 1,
     }
@@ -183,6 +185,25 @@ def submit_ticket():
         "ticket_id": ticket["ticket_id"],
         "helpdesk_url": f"/departments/{result['department']}",
     })
+
+
+@app.route("/api/tickets/<ticket_id>/toggle-resolution", methods=["POST"])
+def toggle_resolution_route(ticket_id):
+    data = request.get_json(silent=True) or {}
+    is_resolved = bool(data.get("is_resolved", False))
+    now_iso = datetime.now(timezone.utc).isoformat() if is_resolved else None
+
+    if data_manager.toggle_ticket_resolution(get_records(), ticket_id, is_resolved, now_iso):
+        return jsonify({
+            "success": True,
+            "is_resolved": is_resolved,
+            "resolved_at": now_iso
+        })
+
+    return jsonify({
+        "success": False,
+        "error": "Ticket not found or update failed."
+    }), 400
 
 
 def open_browser():

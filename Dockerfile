@@ -1,7 +1,14 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+# Install dependencies first so Docker can cache this step
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+# Copy the rest of the project (.dockerignore keeps secrets and junk out)
+COPY . .
 
-CMD ["python", "main.py"]
+EXPOSE 5000
+
+CMD ["python", "main.py", "--host", "0.0.0.0", "--no-browser"]

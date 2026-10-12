@@ -35,6 +35,8 @@ def parse_args(argv=None):
                              "(fake Gemini, no API key or quota needed)")
     parser.add_argument("--port", type=int, default=5000,
                         help="web server port (default 5000)")
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="address to listen on (use 0.0.0.0 in Docker)")
     parser.add_argument("--no-browser", action="store_true",
                         help="do not open the browser automatically")
     return parser.parse_args(argv)
@@ -66,13 +68,13 @@ def run_demo():
         sys.exit(1)
 
 
-def run_web(port, auto_open):
+def run_web(host, port, auto_open):
     # io_manager imports ai_manager, which refuses to load without an API key.
     try:
         import io_manager
     except RuntimeError as error:
         sys.exit(str(error))
-    io_manager.run_server(port=port, auto_open=auto_open)
+    io_manager.run_server(host=host, port=port, auto_open=auto_open)
 
 
 def main(argv=None):
@@ -82,7 +84,7 @@ def main(argv=None):
     elif args.test:
         run_tests(live=args.live)
     else:
-        run_web(port=args.port, auto_open=not args.no_browser)
+        run_web(host=args.host, port=args.port, auto_open=not args.no_browser)
 
 
 if __name__ == "__main__":

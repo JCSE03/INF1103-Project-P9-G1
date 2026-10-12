@@ -1,56 +1,143 @@
-from flask import Flask, render_template, request, jsonify
-import webbrowser
-from threading import Timer
-import ai_manager  # Your AI logic file
+"""I/O Manager: every boundary with the outside world (web page, console).
 
-# Initialize Flask app to look for index.html in the same folder
-app = Flask(__name__, template_folder='.') 
+It holds no business rules, AI or file code. For each ticket it calls:
+    ai_manager.classify_ticket   security checks, redaction, Gemini, validation
+    logic_manager.process_ticket priority, department, review flag
+    data_manager.add_record      saves the decision
+and for the queue view:
+    data_manager.find_records + logic_manager.sort_queue
+"""
+
+import os
+import webbrowser
+from datetime import datetime, timezone
+from threading import Lock, Timer
+
+from flask import Flask, jsonify, render_template, request
+
+import ai_manager
+import data_manager
+import logic_manager
+
+# Look for index.html in the same folder as this file, wherever we are run from.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, template_folder=BASE_DIR)
+
+# HTTP status for each "status" value classify_ticket can return.
+STATUS_CODES = {
+    "success": 200,
+    "invalid": 400,
+    "blocked": 403,
+    "rate_limited": 429,
+    "error": 503,
+}
+
+
+# Requests are handled on several threads; only one may read-modify-write
+# the ticket file at a time, or two tickets could overwrite each other.
+_data_lock = Lock()
+
+
+def _error(reason, code):
+    return jsonify({"status": "error", "reason": reason, "manual_review": True}), code
+
 
 # ==========================================
-# SIMPLE PRINT FUNCTION
+# SIMPLE PRINT FUNCTION (all console output goes through here)
 # ==========================================
 def print_message(message):
     print(message)
 
+
 # ==========================================
-# FLASK WEB ROUTES (Connecting HTML to Python)
+# FLASK WEB ROUTES (connecting HTML to Python)
 # ==========================================
 @app.route("/")
 def home():
-    # Show the web page when someone visits the site
     return render_template("index.html")
+
 
 @app.route("/submit-ticket", methods=["POST"])
 def submit_ticket():
-    # 1. Grab the data sent from the webpage form
-    form_data = request.json
-    
-    print_message("Processing new ticket: " + str(form_data.get('ticket_title')))
+    form_data = request.get_json(silent=True)
+    if not isinstance(form_data, dict):
+        return jsonify({
+            "status": "invalid",
+            "reason": "Request must be a JSON object.",
+            "manual_review": True,
+        }), 400
 
-    # 2. Pass the data to your AI Manager[cite: 1]
-    prompt = ai_manager.build_prompt(form_data)
-    raw_response = ai_manager.call_api(prompt)
-    parsed_json = ai_manager.parse_response(raw_response)
-    
-    # 3. Send the AI's JSON answer back to the webpage
-    if ai_manager.validate_response(parsed_json):
-        print_message("AI processing successful.")
-        return jsonify(parsed_json)
-    else:
-        print_message("AI validation failed.")
-        return jsonify({"error": "AI validation failed", "raw_data": parsed_json}), 400
+    # One rate-limit bucket per client address.
+    user_id = request.remote_addr or "anonymous"
+
+    # The whole AI pipeline lives in ai_manager. The ticket text is not
+    # printed here, to keep it out of the console.
+    result = ai_manager.classify_ticket(form_data, user_id=user_id)
+    print_message(f"Ticket from {user_id}: {result['status']}")
+
+    # Rejected, blocked, rate-limited or failed tickets are reported, not saved.
+    if result["status"] != "success":
+        return jsonify(result), STATUS_CODES.get(result["status"], 500)
+
+    # Business rules: priority, department, human-review flag.
+    decision = logic_manager.process_ticket(result)
+
+    # Save. Only the AI's summary is stored, never the raw ticket text,
+    # which may contain details ai_manager redacted before the API call.
+    with _data_lock:
+        records = data_manager.load_records()
+        if records is None:
+            # Unreadable file: do NOT save, or the old data would be overwritten.
+            print_message("tickets.json is unreadable; ticket was NOT saved.")
+            return _error("Ticket data file could not be read, so the ticket was not saved.", 503)
+
+        ticket = {
+            "ticket_id": f"T-{len(records) + 1:04d}",
+            "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            **decision,
+        }
+        if not data_manager.add_record(records, ticket):
+            print_message("Could not write tickets.json; ticket was NOT saved.")
+            return _error("The ticket could not be saved. Please try again.", 503)
+
+    print_message(f"Saved {ticket['ticket_id']}: {ticket['priority']} -> {ticket['department']}")
+
+    result["ticket"] = ticket
+    result["manual_review"] = bool(result.get("manual_review") or ticket["needs_review"])
+    return jsonify(result), 200
+
+
+@app.route("/queue")
+def queue():
+    """Saved tickets, most urgent first. Optional ?department=Cyber|HR|Finance|Infra."""
+    department = request.args.get("department")
+    if department and department not in logic_manager.DEPARTMENTS:
+        return _error("Unknown department.", 400)
+
+    with _data_lock:
+        records = data_manager.load_records()
+    if records is None:
+        return _error("Ticket data file could not be read.", 503)
+
+    if department:
+        records = data_manager.find_records(records, "department", department)
+
+    return jsonify({"status": "success", "tickets": logic_manager.sort_queue(records)})
+
 
 # ==========================================
-# MAIN EXECUTION
+# SERVER START-UP (called by main.py)
 # ==========================================
-def open_browser():
-    webbrowser.open("http://127.0.0.1:5000")
+def open_browser(host, port):
+    webbrowser.open(f"http://{host}:{port}")
 
-if __name__ == "__main__":
+
+def run_server(host="127.0.0.1", port=5000, auto_open=True):
     print_message("Starting web server... Press CTRL+C in the terminal to stop it.")
-    
-    # Automatically open the browser after 1 second
-    Timer(1, open_browser).start()
-    
-    # Run the Flask server
-    app.run(port=5000, debug=False)
+    if auto_open:
+        Timer(1, open_browser, args=(host, port)).start()
+    app.run(host=host, port=port, debug=False)
+
+
+if __name__ == "__main__":  # still works on its own, but main.py is the entry point
+    run_server()

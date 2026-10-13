@@ -215,7 +215,8 @@ def toggle_resolution(ticket_id):
 # SERVER START-UP (called by main.py)
 # ==========================================
 def open_browser(host, port):
-    webbrowser.open(f"http://{host}:{port}")
+    webbrowser.open(f"http://{host}:{port}/")
+    webbrowser.open(f"http://{host}:{port}/helpdesk")
 
 
 def run_server(host="127.0.0.1", port=5000, auto_open=True):

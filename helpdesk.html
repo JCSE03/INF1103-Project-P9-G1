@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IT Helpdesk Dashboard</title>
+
     <style>
         :root {
             --navy: #102a43;
@@ -20,78 +21,67 @@
 
         body {
             margin: 0;
-            min-width: 320px;
-            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-family: Arial, sans-serif;
             color: var(--ink);
             background: var(--page);
         }
 
         .topbar {
-            background: var(--navy);
-            color: white;
-            padding: 22px max(24px, calc((100vw - 1240px) / 2));
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 18px;
+            padding: 20px 24px;
+            color: white;
+            background: var(--navy);
         }
 
-        .brand { display: flex; align-items: center; gap: 13px; }
-
-        .brand-mark {
-            width: 40px;
-            height: 40px;
-            display: grid;
-            place-items: center;
-            border-radius: 10px;
-            background: #1f7bc1;
-            font-size: 20px;
+        .topbar h1 {
+            margin: 0;
+            font-size: 21px;
         }
 
-        .brand h1 { margin: 0; font-size: 20px; }
-        .brand p { margin: 3px 0 0; color: #bcccdc; font-size: 13px; }
-
-        .live-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 11px;
-            border: 1px solid rgba(255,255,255,.24);
-            border-radius: 999px;
-            color: #d9e2ec;
+        .topbar p {
+            margin: 4px 0 0;
+            color: #bcccdc;
             font-size: 13px;
         }
 
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #48d597;
+        .live-status {
+            padding: 8px 11px;
+            color: #d9e2ec;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 999px;
+            font-size: 13px;
         }
-
-        .status-dot.offline { background: #f6c343; }
 
         main {
-            max-width: 1240px;
+            max-width: 1200px;
             margin: 0 auto;
-            padding: 34px 24px 50px;
+            padding: 32px 24px 50px;
         }
 
-        .intro { margin-bottom: 25px; }
-        .intro h2 { margin: 0 0 7px; font-size: clamp(24px, 3vw, 32px); color: var(--navy); }
-        .intro p { margin: 0; color: var(--muted); line-height: 1.55; }
+        h2, h3, h4 {
+            color: var(--navy);
+        }
 
-        .filters {
-            display: grid;
-            grid-template-columns: minmax(220px, 340px) 1fr;
-            align-items: end;
-            gap: 16px;
-            padding: 18px;
-            margin-bottom: 24px;
+        .toolbar,
+        .queue-summary,
+        .ticket-card,
+        .empty-state {
             background: var(--card);
             border: 1px solid var(--line);
-            border-radius: 14px;
-            box-shadow: 0 5px 18px rgba(16, 42, 67, .05);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(16, 42, 67, 0.05);
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 18px;
+            margin: 22px 0;
         }
 
         label {
@@ -99,424 +89,609 @@
             margin-bottom: 7px;
             color: var(--navy);
             font-size: 13px;
-            font-weight: 700;
+            font-weight: bold;
         }
 
         select {
-            width: 100%;
-            padding: 11px 12px;
-            color: var(--ink);
-            border: 1px solid #bcccdc;
-            border-radius: 8px;
-            background: white;
+            min-width: 230px;
+            padding: 10px;
             font: inherit;
+            border: 1px solid #bcccdc;
+            border-radius: 7px;
         }
 
-        .filter-note {
-            margin: 0 0 2px;
-            color: var(--muted);
-            font-size: 13px;
-            line-height: 1.45;
+        a {
+            color: var(--blue);
         }
 
-        .section-heading {
-            display: flex;
-            align-items: baseline;
-            justify-content: space-between;
-            gap: 16px;
-            margin: 32px 0 12px;
+        .queue-summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1px;
+            overflow: hidden;
+            margin-bottom: 28px;
+            background: var(--line);
         }
 
-        .section-heading h3 {
-            margin: 0;
+        .queue-stat {
+            padding: 16px;
+            background: white;
+        }
+
+        .queue-stat strong {
+            display: block;
+            margin-top: 4px;
             color: var(--navy);
-            font-size: 18px;
+            font-size: 25px;
         }
 
-        .section-heading span {
+        .queue-stat span {
             color: var(--muted);
             font-size: 13px;
         }
 
-        .ticket-card,
-        .empty-state {
-            background: var(--card);
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            box-shadow: 0 5px 18px rgba(16, 42, 67, .05);
+        .dashboard-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            align-items: start;
         }
 
-        .ticket-card { overflow: hidden; }
+        .column-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--line);
+        }
+
+        .column-header h3 {
+            margin: 0;
+        }
+
+        .ticket-count-badge {
+            padding: 4px 8px;
+            color: var(--blue);
+            background: var(--blue-soft);
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .ticket-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .ticket-card {
+            overflow: hidden;
+        }
 
         .ticket-banner {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 14px;
-            padding: 14px 20px;
+            gap: 12px;
+            padding: 13px 18px;
             color: #0c5132;
             background: #e8f7ef;
             border-bottom: 1px solid #c2ebd2;
-            font-size: 14px;
-            font-weight: 700;
+            font-size: 13px;
+            font-weight: bold;
         }
 
-        .ticket-body { padding: 22px; }
-        .ticket-title { margin: 0 0 20px; color: var(--navy); font-size: 22px; }
+        .ticket-card.is-resolved .ticket-banner {
+            color: #486581;
+            background: #f0f4f8;
+            border-bottom-color: #d9e2ec;
+        }
+
+        .ticket-body {
+            padding: 18px;
+        }
+
+        .ticket-header-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .ticket-title {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .resolve-btn,
+        .unresolve-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .resolve-btn {
+            color: white;
+            background: #27ab83;
+            border: none;
+        }
+
+        .unresolve-btn {
+            color: var(--ink);
+            background: #e4e7eb;
+            border: 1px solid #cbd2d9;
+        }
+
+        .resolved-info {
+            display: block;
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 11px;
+        }
 
         .ticket-grid {
             display: grid;
-            grid-template-columns: minmax(0, 1.55fr) minmax(250px, 1fr);
-            gap: 20px;
+            grid-template-columns: 1fr;
+            gap: 16px;
         }
 
-        .field + .field { margin-top: 18px; }
+        .field + .field {
+            margin-top: 10px;
+        }
 
         .field-label {
             display: block;
-            margin-bottom: 6px;
+            margin-bottom: 2px;
             color: var(--muted);
-            font-size: 12px;
-            font-weight: 800;
-            letter-spacing: .055em;
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: 0.06em;
             text-transform: uppercase;
         }
 
         .field-value {
             margin: 0;
-            color: var(--ink);
-            line-height: 1.55;
-            overflow-wrap: anywhere;
+            font-size: 13px;
+            line-height: 1.4;
             white-space: pre-wrap;
+            overflow-wrap: anywhere;
         }
 
         .classification {
-            padding: 17px;
+            padding: 12px;
             background: var(--blue-soft);
             border: 1px solid #cde4fa;
-            border-radius: 10px;
-        }
-
-        .classification h4 {
-            margin: 0 0 14px;
-            color: #124e78;
-            font-size: 15px;
+            border-radius: 8px;
         }
 
         .classification-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
         }
 
         .classification-item {
-            min-width: 0;
-            padding: 10px;
-            background: rgba(255,255,255,.72);
-            border-radius: 7px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.75);
+            border-radius: 6px;
         }
 
         .classification-item strong {
             display: block;
-            margin-bottom: 3px;
+            margin-bottom: 2px;
             color: #486581;
-            font-size: 11px;
+            font-size: 9px;
             text-transform: uppercase;
         }
 
         .classification-item span {
-            overflow-wrap: anywhere;
-            font-size: 14px;
-            font-weight: 700;
-        }
-
-        .additional-result {
-            margin: 13px 0 0;
-            padding-top: 12px;
-            border-top: 1px solid #cde4fa;
-            color: #486581;
-            font-size: 13px;
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
+            font-size: 12px;
         }
 
         .empty-state {
-            padding: 40px 24px;
+            padding: 28px 16px;
+            color: var(--muted);
             text-align: center;
+            font-size: 14px;
         }
 
-        .empty-icon {
-            display: grid;
-            place-items: center;
-            width: 44px;
-            height: 44px;
-            margin: 0 auto 13px;
-            border-radius: 50%;
-            background: #eaf4ff;
-            color: var(--blue);
-            font-size: 20px;
+        .hidden {
+            display: none;
         }
 
-        .empty-state h4 { margin: 0 0 7px; color: var(--navy); font-size: 17px; }
-        .empty-state p { max-width: 540px; margin: 0 auto; color: var(--muted); line-height: 1.55; }
-        .loading { padding: 30px; color: var(--muted); text-align: center; }
-        .hidden { display: none !important; }
+        @media (max-width: 960px) {
+            .dashboard-columns {
+                grid-template-columns: 1fr;
+            }
+        }
 
-        @media (max-width: 720px) {
-            .topbar { align-items: flex-start; flex-direction: column; }
-            main { padding: 25px 16px 40px; }
-            .filters, .ticket-grid { grid-template-columns: 1fr; }
-            .ticket-banner { align-items: flex-start; flex-direction: column; }
+        @media (max-width: 600px) {
+            .topbar,
+            .toolbar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .queue-summary,
+            .classification-grid {
+                grid-template-columns: 1fr;
+            }
+
+            select {
+                width: 100%;
+            }
         }
     </style>
 </head>
-<body>
+
+<body data-initial-department="{{ initial_department }}">
     <header class="topbar">
-        <div class="brand">
-            <div class="brand-mark">?</div>
-            <div>
-                <h1>IT Helpdesk</h1>
-                <p>AI-assisted ticket prioritisation</p>
-            </div>
+        <div>
+            <h1>IT Helpdesk</h1>
+            <p>AI-classified ticket queues</p>
         </div>
 
-        <div class="live-status" aria-live="polite">
-            <span class="status-dot" id="status-dot"></span>
-            <span id="status-text">Checking for updates</span>
+        <div class="live-status" id="live-status">
+            Checking for updates…
         </div>
     </header>
 
     <main>
-        <section class="intro">
-            <h2>Helpdesk dashboard</h2>
-            <p>Review the latest submitted ticket and its AI classification. The dashboard checks for updates automatically.</p>
-        </section>
+        <h2 id="page-title">Helpdesk Dashboard</h2>
+        <p id="page-description">
+            Review incoming tickets and their AI classifications.
+        </p>
 
-        <section class="filters">
+        <section class="toolbar">
             <div>
-                <label for="department-filter">Department queue</label>
+                <label for="department-filter">Department Queue</label>
+
                 <select id="department-filter">
                     <option value="all">All departments</option>
-                    <option value="Cyber">Cyber</option>
-                    <option value="HR">HR</option>
-                    <option value="Finance">Finance</option>
-                    <option value="Infra">Infra</option>
+                    {% for department in departments %}
+                    <option value="{{ department }}">{{ department }}</option>
+                    {% endfor %}
                 </select>
             </div>
 
-            <p class="filter-note" id="filter-note">
-                Choose a department to focus the view. Historical department queues will appear here once ticket storage is added.
-            </p>
+            <a href="/">← Submit a new ticket</a>
         </section>
 
-        <section>
-            <div class="section-heading">
-                <h3>Current ticket</h3>
-                <span id="last-updated">Waiting for a submission</span>
-            </div>
+        <section class="queue-summary" id="queue-summary"></section>
 
-            <div class="ticket-card hidden" id="current-ticket-card">
-                <div class="ticket-banner">
-                    <span>Latest successfully classified ticket</span>
-                    <span id="ticket-department"></span>
+        <div class="dashboard-columns">
+            <section>
+                <div class="column-header">
+                    <h3>Active Tickets</h3>
+                    <span class="ticket-count-badge" id="active-count">0</span>
                 </div>
 
-                <div class="ticket-body">
-                    <h4 class="ticket-title" id="ticket-title"></h4>
+                <div class="ticket-list" id="active-ticket-list"></div>
 
-                    <div class="ticket-grid">
-                        <div>
-                            <div class="field">
-                                <span class="field-label">Problem description / device details</span>
-                                <p class="field-value" id="ticket-description"></p>
-                            </div>
-
-                            <div class="field">
-                                <span class="field-label">Affected service / device</span>
-                                <p class="field-value" id="ticket-service"></p>
-                            </div>
-                        </div>
-
-                        <aside class="classification">
-                            <h4>AI classification</h4>
-                            <div class="classification-grid" id="classification-grid"></div>
-                            <p class="additional-result hidden" id="additional-result"></p>
-                        </aside>
-                    </div>
+                <div class="empty-state hidden" id="active-empty-state">
+                    No active tickets in this queue.
                 </div>
-            </div>
+            </section>
 
-            <div class="empty-state" id="no-current-ticket">
-                <div class="empty-icon">📄</div>
-                <h4>No current ticket yet</h4>
-                <p>When a ticket is successfully submitted and classified, its details and AI result will appear here.</p>
-            </div>
-        </section>
+            <section>
+                <div class="column-header">
+                    <h3>Resolved Tickets</h3>
+                    <span class="ticket-count-badge" id="resolved-count">0</span>
+                </div>
 
-        <section>
-            <div class="section-heading">
-                <h3>Older tickets</h3>
-                <span>History</span>
-            </div>
+                <div class="ticket-list" id="resolved-ticket-list"></div>
 
-            <div class="empty-state">
-                <div class="empty-icon">🕒</div>
-                <h4>No older tickets to show</h4>
-                <p>Historical tickets are not stored by the current backend. This section is ready to display them when persistent ticket storage and a history endpoint are added.</p>
-            </div>
-        </section>
+                <div class="empty-state hidden" id="resolved-empty-state">
+                    No resolved tickets in this queue.
+                </div>
+            </section>
+        </div>
     </main>
 
     <script>
-        const POLLING_INTERVAL_MS = 2000;
+        const initialDepartment = document.body.dataset.initialDepartment;
         const departmentFilter = document.getElementById("department-filter");
-        const currentTicketCard = document.getElementById("current-ticket-card");
-        const noCurrentTicket = document.getElementById("no-current-ticket");
-        const statusText = document.getElementById("status-text");
-        const statusDot = document.getElementById("status-dot");
+        const activeList = document.getElementById("active-ticket-list");
+        const resolvedList = document.getElementById("resolved-ticket-list");
+        const activeEmpty = document.getElementById("active-empty-state");
+        const resolvedEmpty = document.getElementById("resolved-empty-state");
+        const activeCount = document.getElementById("active-count");
+        const resolvedCount = document.getElementById("resolved-count");
 
-        function valueOrFallback(value, fallback = "Not provided") {
+        const departments = ["Cyber", "Finance", "HR", "Infra"];
+
+        departmentFilter.value = initialDepartment;
+
+        function text(value, fallback = "Not provided") {
             return value === undefined || value === null || value === ""
                 ? fallback
                 : String(value);
         }
 
-        function displayLabel(key) {
-            const labels = {
-                severity: "Severity",
-                priority: "Priority",
-                affected_scope: "Affected scope",
-                confidence_score: "Confidence",
-                department: "Department"
+        function formatAffectedScope(scope) {
+            const scopeLabels = {
+                individual: "One person",
+                multiple_users: "Multiple users",
+                department: "One department or team",
+                organisation: "Organisation-wide"
             };
 
-            return labels[key] || key.replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase());
+            return scopeLabels[scope] || text(scope);
         }
 
-        function renderClassification(result) {
-            const grid = document.getElementById("classification-grid");
-            const additional = document.getElementById("additional-result");
+        function queueCard(label, count) {
+            const card = document.createElement("div");
+            card.className = "queue-stat";
 
-            grid.replaceChildren();
-            additional.textContent = "";
-            additional.classList.add("hidden");
+            const labelElement = document.createElement("span");
+            labelElement.textContent = label;
 
-            if (!result || typeof result !== "object" || Array.isArray(result)) {
-                const item = document.createElement("div");
-                item.className = "classification-item";
-                item.innerHTML = "<strong>Result</strong><span></span>";
-                item.querySelector("span").textContent = valueOrFallback(result, "Classification unavailable");
-                grid.appendChild(item);
+            const countElement = document.createElement("strong");
+            countElement.textContent = count;
+
+            card.append(labelElement, countElement);
+            return card;
+        }
+
+        function renderQueue(queue) {
+            const summary = document.getElementById("queue-summary");
+            summary.replaceChildren();
+
+            if (departmentFilter.value === "all") {
+                departments.forEach((department) => {
+                    const details = queue.departments[department] || { queued: 0 };
+
+                    summary.appendChild(
+                        queueCard(`${department} queued`, details.queued)
+                    );
+                });
+
                 return;
             }
 
-            const primaryKeys = ["severity", "priority", "affected_scope", "confidence_score", "department"];
-            const shownKeys = primaryKeys.filter(key =>
-                Object.prototype.hasOwnProperty.call(result, key)
+            const details = queue.departments[departmentFilter.value] || {
+                queued: 0,
+                total: 0
+            };
+
+            summary.appendChild(queueCard("Queued tickets", details.queued));
+            summary.appendChild(
+                queueCard("All department tickets", details.total)
             );
+        }
 
-            const keysToShow = shownKeys.length
-                ? shownKeys
-                : Object.keys(result).filter(key => typeof result[key] !== "object").slice(0, 4);
+        function addField(container, label, value) {
+            const field = document.createElement("div");
+            field.className = "field";
 
-            keysToShow.forEach(key => {
-                const item = document.createElement("div");
-                item.className = "classification-item";
+            const fieldLabel = document.createElement("span");
+            fieldLabel.className = "field-label";
+            fieldLabel.textContent = label;
 
-                const label = document.createElement("strong");
-                const value = document.createElement("span");
+            const fieldValue = document.createElement("p");
+            fieldValue.className = "field-value";
+            fieldValue.textContent = text(value);
 
-                label.textContent = displayLabel(key);
-                value.textContent = valueOrFallback(result[key]);
+            field.append(fieldLabel, fieldValue);
+            container.appendChild(field);
+        }
 
-                item.append(label, value);
-                grid.appendChild(item);
-            });
+        function addClassificationItem(container, label, value) {
+            const item = document.createElement("div");
+            item.className = "classification-item";
 
-            const extraKeys = Object.keys(result).filter(key => !keysToShow.includes(key));
+            const itemLabel = document.createElement("strong");
+            itemLabel.textContent = label;
 
-            if (extraKeys.length) {
-                const additionalData = {};
+            const itemValue = document.createElement("span");
+            itemValue.textContent = text(value);
 
-                extraKeys.forEach(key => {
-                    additionalData[key] = result[key];
-                });
+            item.append(itemLabel, itemValue);
+            container.appendChild(item);
+        }
 
-                additional.textContent = JSON.stringify(additionalData, null, 2);
-                additional.classList.remove("hidden");
+        async function toggleResolution(ticketId, isResolved) {
+            try {
+                const response = await fetch(
+                    `/api/tickets/${encodeURIComponent(ticketId)}/toggle-resolution`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            is_resolved: isResolved
+                        })
+                    }
+                );
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    alert(data.error || "Could not update the ticket.");
+                    return;
+                }
+
+                loadTickets();
+            } catch (error) {
+                alert(`Error: ${error.message}`);
             }
         }
 
         function renderTicket(ticket) {
             const result = ticket.result || {};
-            const assignedDepartment = valueOrFallback(result.department, "Department not assigned");
+            const card = document.createElement("article");
 
-            document.getElementById("ticket-title").textContent =
-                valueOrFallback(ticket.ticket_title, "Untitled ticket");
+            card.className = ticket.is_resolved
+                ? "ticket-card is-resolved"
+                : "ticket-card";
 
-            document.getElementById("ticket-description").textContent =
-                valueOrFallback(ticket.problem_description);
+            const banner = document.createElement("div");
+            banner.className = "ticket-banner";
 
-            document.getElementById("ticket-service").textContent =
-                valueOrFallback(ticket.affected_service, "Not provided in this submission");
+            const departmentText = document.createElement("span");
+            departmentText.textContent =
+                `${text(result.department)} · ${text(result.queue_status)}`;
 
-            document.getElementById("ticket-department").textContent = assignedDepartment;
+            const ticketInfo = document.createElement("span");
+            ticketInfo.textContent =
+                `${text(ticket.ticket_id)} · Position ${text(ticket.queue_position)}`;
 
-            renderClassification(result);
+            banner.append(departmentText, ticketInfo);
 
-            const selectedDepartment = departmentFilter.value;
-            const matchesFilter =
-                selectedDepartment === "all" ||
-                result.department === selectedDepartment;
+            const body = document.createElement("div");
+            body.className = "ticket-body";
 
-            currentTicketCard.classList.toggle("hidden", !matchesFilter);
-            noCurrentTicket.classList.toggle("hidden", matchesFilter);
+            const headerRow = document.createElement("div");
+            headerRow.className = "ticket-header-row";
 
-            if (!matchesFilter) {
-                noCurrentTicket.querySelector("h4").textContent =
-                    "No current ticket for " + selectedDepartment;
+            const title = document.createElement("h4");
+            title.className = "ticket-title";
+            title.textContent = text(ticket.ticket_title, "Untitled ticket");
 
-                noCurrentTicket.querySelector("p").textContent =
-                    "The newest ticket is assigned to " + assignedDepartment +
-                    ". Historical department tickets will be available after storage is added.";
+            const actionContainer = document.createElement("div");
+            const actionButton = document.createElement("button");
+
+            if (ticket.is_resolved) {
+                actionButton.className = "unresolve-btn";
+                actionButton.textContent = "Unresolve";
+                actionButton.onclick = () =>
+                    toggleResolution(ticket.ticket_id, false);
+
+                if (ticket.resolved_at) {
+                    const resolvedInfo = document.createElement("span");
+                    resolvedInfo.className = "resolved-info";
+                    resolvedInfo.textContent =
+                        `Resolved: ${new Date(ticket.resolved_at).toLocaleString()}`;
+
+                    actionContainer.appendChild(resolvedInfo);
+                }
+            } else {
+                actionButton.className = "resolve-btn";
+                actionButton.textContent = "Mark as resolved";
+                actionButton.onclick = () =>
+                    toggleResolution(ticket.ticket_id, true);
             }
+
+            actionContainer.prepend(actionButton);
+            headerRow.append(title, actionContainer);
+
+            const grid = document.createElement("div");
+            grid.className = "ticket-grid";
+
+            const details = document.createElement("div");
+            addField(details, "Submitted by", ticket.name);
+            addField(details, "Contact number", ticket.contact_number);
+            addField(details, "Problem description", ticket.problem_description);
+
+            const classification = document.createElement("aside");
+            classification.className = "classification";
+
+            const classificationGrid = document.createElement("div");
+            classificationGrid.className = "classification-grid";
+
+            addClassificationItem(classificationGrid, "Category", result.category);
+            addClassificationItem(classificationGrid, "Severity", result.severity);
+            addClassificationItem(
+                classificationGrid,
+                "Affected users (AI estimate)",
+                formatAffectedScope(result.affected_scope)
+            );
+            addClassificationItem(
+                classificationGrid,
+                "Department",
+                result.department
+            );
+            addClassificationItem(
+                classificationGrid,
+                "AI summary",
+                result.summary
+            );
+
+            classification.appendChild(classificationGrid);
+
+            grid.append(details, classification);
+            body.append(headerRow, grid);
+            card.append(banner, body);
+
+            return card;
         }
 
-        async function loadTicketStatus() {
+        async function loadTickets() {
+            const department = departmentFilter.value;
+
             try {
-                const response = await fetch("/ticket-status", {
-                    cache: "no-store"
-                });
+                const response = await fetch(
+                    `/api/tickets?department=${encodeURIComponent(department)}`,
+                    {
+                        cache: "no-store"
+                    }
+                );
 
                 if (!response.ok) {
-                    throw new Error("Unable to read ticket status");
+                    throw new Error("Unable to load tickets");
                 }
 
                 const data = await response.json();
 
-                statusText.textContent = "Live updates active";
-                statusDot.classList.remove("offline");
+                activeList.replaceChildren();
+                resolvedList.replaceChildren();
 
-                if (data.available && data.ticket) {
-                    renderTicket(data.ticket);
-                    document.getElementById("last-updated").textContent = "Updated just now";
-                } else {
-                    currentTicketCard.classList.add("hidden");
-                    noCurrentTicket.classList.remove("hidden");
-                    document.getElementById("last-updated").textContent = "Waiting for a submission";
-                }
+                renderQueue(data.queue);
+
+                const activeTickets = data.tickets.filter(
+                    (ticket) => !ticket.is_resolved
+                );
+
+                const resolvedTickets = data.tickets.filter(
+                    (ticket) => ticket.is_resolved
+                );
+
+                activeCount.textContent = activeTickets.length;
+                resolvedCount.textContent = resolvedTickets.length;
+
+                activeTickets.forEach((ticket) => {
+                    activeList.appendChild(renderTicket(ticket));
+                });
+
+                resolvedTickets.forEach((ticket) => {
+                    resolvedList.appendChild(renderTicket(ticket));
+                });
+
+                activeEmpty.classList.toggle(
+                    "hidden",
+                    activeTickets.length > 0
+                );
+
+                resolvedEmpty.classList.toggle(
+                    "hidden",
+                    resolvedTickets.length > 0
+                );
+
+                document.getElementById("live-status").textContent =
+                    "Live updates active";
             } catch (error) {
-                console.error(error);
-                statusText.textContent = "Unable to check for updates";
-                statusDot.classList.add("offline");
+                document.getElementById("live-status").textContent =
+                    "Unable to load queue updates";
             }
         }
 
-        departmentFilter.addEventListener("change", loadTicketStatus);
+        departmentFilter.addEventListener("change", () => {
+            const department = departmentFilter.value;
 
-        loadTicketStatus();
-        window.setInterval(loadTicketStatus, POLLING_INTERVAL_MS);
+            window.location.assign(
+                department === "all"
+                    ? "/helpdesk"
+                    : `/departments/${encodeURIComponent(department)}`
+            );
+        });
+
+        loadTickets();
+        window.setInterval(loadTickets, 5000);
     </script>
 </body>
 </html>
-```

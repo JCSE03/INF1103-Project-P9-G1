@@ -3,197 +3,292 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IT Helpdesk AI</title>
+    <title>IT Support Request</title>
+
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f9; color: #333; }
-        .container { max-width: 650px; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        h2 { color: #0056b3; margin-bottom: 20px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-weight: bold; margin-bottom: 5px; }
-        textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-family: inherit; }
-        button { background-color: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }
-        button:hover { background-color: #0056b3; }
-        button:disabled { background-color: #7aaee0; cursor: wait; }
-        .hint { font-size: 12px; color: #777; margin-top: 4px; }
-        #result-box { display: none; border-left: 5px solid #28a745; }
-        #result-box.problem { border-left-color: #dc3545; }
-        .banner { padding: 10px; border-radius: 4px; margin-bottom: 12px; background: #fff3cd; color: #664d03; }
-        dl { margin: 0; }
-        dt { font-weight: bold; margin-top: 10px; }
-        dd { margin: 2px 0 0 0; }
-        .container.wide { max-width: 950px; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e3e6ea; vertical-align: top; }
-        th { background: #f4f6f9; }
-        .p1 { color: #b02a37; font-weight: bold; }
-        .p2 { color: #c4630a; font-weight: bold; }
-        .queue-controls { display: flex; gap: 10px; margin-bottom: 15px; }
-        .queue-controls select { width: auto; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        .queue-controls button { width: auto; padding: 8px 16px; font-size: 14px; }
+        :root {
+            --navy: #102a43;
+            --blue: #1769aa;
+            --blue-dark: #0f4f82;
+            --page: #eef4f8;
+            --card: #ffffff;
+            --line: #d9e2ec;
+            --text: #243b53;
+            --success-bg: #e8f7ef;
+            --success-text: #0c5132;
+            --error-bg: #fdecec;
+            --error-text: #8a1c1c;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            margin: 0;
+            padding: 40px 18px;
+            font-family: Arial, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top right, #d7ecff 0, transparent 36%),
+                var(--page);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 620px;
+            margin: 0 auto;
+            overflow: hidden;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: 0 18px 45px rgba(16, 42, 67, 0.12);
+        }
+
+        .header {
+            padding: 30px 34px 25px;
+            color: white;
+            background: linear-gradient(135deg, var(--navy), var(--blue));
+        }
+
+        .header-icon {
+            display: grid;
+            width: 44px;
+            height: 44px;
+            margin-bottom: 14px;
+            place-items: center;
+            font-size: 22px;
+            background: rgba(255, 255, 255, 0.16);
+            border-radius: 12px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 26px;
+        }
+
+        .header p {
+            margin: 8px 0 0;
+            color: #d9eafd;
+            line-height: 1.5;
+        }
+
+        form {
+            padding: 12px 34px 34px;
+        }
+
+        label {
+            display: block;
+            margin: 18px 0 7px;
+            color: var(--navy);
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            color: var(--text);
+            font: inherit;
+            background: white;
+            border: 1px solid #bcccdc;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        input:focus,
+        textarea:focus {
+            border-color: var(--blue);
+            box-shadow: 0 0 0 3px rgba(23, 105, 170, 0.14);
+        }
+
+        textarea {
+            min-height: 145px;
+            resize: vertical;
+        }
+
+        textarea::placeholder {
+            color: #829ab1;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 26px;
+            padding: 13px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            background: var(--blue);
+            border: none;
+            border-radius: 8px;
+            transition: background 0.15s, transform 0.15s;
+        }
+
+        button:hover {
+            background: var(--blue-dark);
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.7;
+            transform: none;
+        }
+
+        #result-box {
+            display: none;
+            margin-top: 20px;
+            padding: 13px 14px;
+            border-radius: 8px;
+            line-height: 1.45;
+        }
+
+        #result-box.success {
+            color: var(--success-text);
+            background: var(--success-bg);
+            border: 1px solid #c2ebd2;
+        }
+
+        #result-box.error {
+            color: var(--error-text);
+            background: var(--error-bg);
+            border: 1px solid #f5c2c7;
+        }
+
+        @media (max-width: 560px) {
+            body {
+                padding: 20px 12px;
+            }
+
+            .header,
+            form {
+                padding-right: 22px;
+                padding-left: 22px;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+        }
     </style>
 </head>
+
 <body>
+    <main class="container">
+        <header class="header">
+            <div class="header-icon">?</div>
+            <h1>IT Support Request</h1>
+            <p>Tell us what you need help with and our support team will review your request.</p>
+        </header>
 
-<div class="container">
-    <h2>IT Help Desk Ticket AI Classification</h2>
-    <form id="ticketForm">
-        <div class="form-group">
-            <label for="problem_description">Describe the problem:</label>
-            <textarea id="problem_description" rows="5" maxlength="2000" required
-                placeholder="What is not working, who is affected, and what are you unable to do?"></textarea>
-            <div class="hint">Do not include passwords or card numbers.</div>
-        </div>
-        <button type="submit" id="submitBtn">Classify Ticket via AI</button>
-    </form>
-</div>
+        <form id="ticket-form">
+            <label for="ticket_title">Ticket Title</label>
+            <input
+                type="text"
+                id="ticket_title"
+                name="ticket_title"
+                placeholder="For example: Unable to connect to VPN"
+                required
+            >
 
-<!-- Hidden until the AI replies -->
-<div class="container" id="result-box">
-    <h3 id="result-title">AI Classification Result</h3>
-    <div id="result-body"></div>
-</div>
+            <div class="form-row">
+                <div>
+                    <label for="name">Name</label>
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        autocomplete="name"
+                        required
+                    >
+                </div>
 
-<div class="container wide">
-    <h3>Ticket Queue</h3>
-    <div class="queue-controls">
-        <select id="queueDepartment">
-            <option value="">All departments</option>
-            <option value="Cyber">Cyber</option>
-            <option value="HR">HR</option>
-            <option value="Finance">Finance</option>
-            <option value="Infra">Infra</option>
-        </select>
-        <button type="button" id="refreshBtn">Refresh</button>
-    </div>
-    <div id="queue-body">Loading...</div>
-</div>
+                <div>
+                    <label for="contact_number">Contact Number</label>
+                    <input
+                        type="tel"
+                        id="contact_number"
+                        name="contact_number"
+                        autocomplete="tel"
+                        required
+                    >
+                </div>
+            </div>
 
-<script>
-    const form = document.getElementById('ticketForm');
-    const button = document.getElementById('submitBtn');
-    const box = document.getElementById('result-box');
-    const body = document.getElementById('result-body');
+            <label for="problem_description">Problem Description</label>
+            <textarea
+                id="problem_description"
+                name="problem_description"
+                placeholder="Please describe the issue, including any error messages you see."
+                required
+            ></textarea>
 
-    function addText(parent, tag, text, className) {
-        // textContent (never innerHTML): model output may echo user input
-        const el = document.createElement(tag);
-        el.textContent = text;
-        if (className) el.className = className;
-        parent.appendChild(el);
-        return el;
-    }
+            <button type="submit" id="submit-button">Submit Support Request</button>
 
-    function showResult(result, ok) {
-        body.replaceChildren();
-        box.style.display = 'block';
-        box.classList.toggle('problem', !ok);
+            <div id="result-box" role="status" aria-live="polite"></div>
+        </form>
+    </main>
 
-        if (!ok) {
-            document.getElementById('result-title').textContent = 'Ticket not classified';
-            addText(body, 'p', result.reason || 'Something went wrong.');
-            if (result.manual_review) {
-                addText(body, 'p', 'This ticket has been marked for manual review.');
+    <script>
+        const form = document.getElementById("ticket-form");
+        const button = document.getElementById("submit-button");
+        const resultBox = document.getElementById("result-box");
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            button.textContent = "Submitting Request…";
+            button.disabled = true;
+            resultBox.style.display = "none";
+            resultBox.className = "";
+
+            const ticketData = {
+                ticket_title: document.getElementById("ticket_title").value,
+                name: document.getElementById("name").value,
+                contact_number: document.getElementById("contact_number").value,
+                problem_description: document.getElementById("problem_description").value
+            };
+
+            try {
+                const response = await fetch("/submit-ticket", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(ticketData)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Could not submit the support request.");
+                }
+
+                form.reset();
+                resultBox.textContent =
+                    "Your support request has been submitted successfully. Our IT team will be in touch.";
+                resultBox.className = "success";
+                resultBox.style.display = "block";
+            } catch (error) {
+                resultBox.textContent = `Error: ${error.message}`;
+                resultBox.className = "error";
+                resultBox.style.display = "block";
+            } finally {
+                button.textContent = "Submit Support Request";
+                button.disabled = false;
             }
-            return;
-        }
-
-        document.getElementById('result-title').textContent = 'AI Classification Result';
-        if (result.flagged) {
-            addText(body, 'div', 'Flagged: ' + result.flag_reason, 'banner');
-        }
-        const list = document.createElement('dl');
-        const t = result.ticket;
-        const fields = [
-            ['Ticket', t.ticket_id],
-            ['Priority', t.priority + ' (score ' + t.priority_score + ')'],
-            ['Routed to', t.department],
-            ['Category', result.data.category],
-            ['Severity', result.data.severity],
-            ['Affected scope', result.data.affected_scope],
-            ['Summary', result.data.summary],
-            ['Confidence', Math.round(result.data.confidence_score * 100) + '%'],
-        ];
-        for (const [label, value] of fields) {
-            addText(list, 'dt', label);
-            addText(list, 'dd', value);
-        }
-        body.appendChild(list);
-        if (result.manual_review) {
-            addText(body, 'p', 'This ticket will also be reviewed manually.');
-        }
-    }
-
-    const queueBody = document.getElementById('queue-body');
-
-    async function loadQueue() {
-        const department = document.getElementById('queueDepartment').value;
-        try {
-            const response = await fetch('/queue?department=' + encodeURIComponent(department));
-            const result = await response.json();
-            queueBody.replaceChildren();
-            if (!response.ok) {
-                addText(queueBody, 'p', result.reason || 'Could not load the queue.');
-                return;
-            }
-            if (result.tickets.length === 0) {
-                addText(queueBody, 'p', 'No tickets yet.');
-                return;
-            }
-            const table = document.createElement('table');
-            const head = table.insertRow();
-            for (const name of ['Priority', 'ID', 'Department', 'Category', 'Summary', 'Review']) {
-                addText(head, 'th', name);
-            }
-            for (const t of result.tickets) {
-                const row = table.insertRow();
-                addText(row, 'td', t.priority, t.priority === 'P1' ? 'p1' : (t.priority === 'P2' ? 'p2' : ''));
-                addText(row, 'td', t.ticket_id);
-                addText(row, 'td', t.department);
-                addText(row, 'td', t.category + ' / ' + t.severity + ' / ' + t.affected_scope);
-                addText(row, 'td', t.summary);
-                addText(row, 'td', t.needs_review ? 'Needs review' : '');
-            }
-            queueBody.appendChild(table);
-        } catch (error) {
-            queueBody.replaceChildren();
-            addText(queueBody, 'p', 'Could not connect to the server.');
-        }
-    }
-
-    document.getElementById('refreshBtn').addEventListener('click', loadQueue);
-    document.getElementById('queueDepartment').addEventListener('change', loadQueue);
-    loadQueue();
-
-    form.addEventListener('submit', async function (e) {
-        e.preventDefault(); // stop the page from refreshing
-
-        button.disabled = true;
-        button.innerText = 'Processing with Gemini...';
-        box.style.display = 'block';
-        box.classList.remove('problem');
-        body.replaceChildren();
-        addText(body, 'p', 'Analyzing ticket...');
-
-        try {
-            const response = await fetch('/submit-ticket', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    problem_description: document.getElementById('problem_description').value
-                })
-            });
-            const result = await response.json();
-            const ok = response.ok && result.status === 'success';
-            showResult(result, ok);
-            if (ok) loadQueue();
-        } catch (error) {
-            showResult({ reason: 'Could not connect to the server.' }, false);
-        } finally {
-            button.disabled = false;
-            button.innerText = 'Classify Ticket via AI';
-        }
-    });
-</script>
-
+        });
+    </script>
 </body>
 </html>

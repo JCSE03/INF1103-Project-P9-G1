@@ -1,4 +1,3 @@
-
 # logic_manager.py - business rules for the IT helpdesk.
 
 # Takes the AI's classification of a ticket and decides:
@@ -65,7 +64,7 @@ LOW_CONFIDENCE_THRESHOLD = 0.6
 
 
 # BUSINESS RULES (one rule per function)
-def calculate_priority_score(severity, scope, category):
+def calculate_priority_score(severity: str, scope: str, category: str) -> int:
     """Add up the points for severity, scope and the cyber bonus."""
     score = SEVERITY_POINTS[severity] + SCOPE_POINTS[scope]
     if category == "cybersecurity":
@@ -73,7 +72,7 @@ def calculate_priority_score(severity, scope, category):
     return score
 
 
-def score_to_priority(score):
+def score_to_priority(score: int) -> str:
     """Turn a score into P1 ... P5 using PRIORITY_THRESHOLDS."""
     for priority, minimum_score in PRIORITY_THRESHOLDS:
         if score >= minimum_score:
@@ -81,7 +80,7 @@ def score_to_priority(score):
     return LOWEST_PRIORITY
 
 
-def apply_cyber_override(priority, category, scope):
+def apply_cyber_override(priority: str, category: str, scope: str) -> str:
     """
     Multi-condition rule: a security issue affecting more than one
     person is always P1, whatever its score.
@@ -91,23 +90,23 @@ def apply_cyber_override(priority, category, scope):
     return priority
 
 
-def get_department(category):
+def get_department(category: str) -> str:
     """Look up which department handles this category."""
     return ROUTING[category]
 
 
-def needs_human_review(confidence, ai_flagged):
+def needs_human_review(confidence: float, ai_flagged: bool) -> bool:
     """A human checks the ticket if the AI is unsure or flagged it."""
     return confidence < LOW_CONFIDENCE_THRESHOLD or ai_flagged
 
 
-def get_priority_number(priority):
+def get_priority_number(priority: str) -> int:
     """'P1' -> 1, ... 'P5' -> 5 (easier to sort and filter on)."""
     return int(priority[1:])
 
 
 # MAIN ENTRY POINT (io_manager calls this)
-def process_ticket(ai_result):
+def process_ticket(ai_result: dict) -> dict:
     """
     Input:  what ai_manager.classify_ticket() returned, e.g.
             {"status": "success", "data": {...}, "flagged": False}
@@ -138,7 +137,7 @@ def process_ticket(ai_result):
 
 
 # QUEUE ORDER
-def queue_sort_key(ticket):
+def queue_sort_key(ticket: dict) -> tuple[int, int, str]:
     """
     Order of a ticket in the queue:
         1. lower priority number first (P1 before P2)
@@ -148,6 +147,6 @@ def queue_sort_key(ticket):
     return (ticket["priority_number"], -ticket["priority_score"], ticket["submitted_at"])
 
 
-def sort_queue(tickets):
+def sort_queue(tickets: list[dict]) -> list[dict]:
     """Return a new list of tickets, most urgent first."""
     return sorted(tickets, key=queue_sort_key)

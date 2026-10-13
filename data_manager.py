@@ -1,11 +1,13 @@
 import json
 import logging
 import os
+import shutil
 import time
 from typing import Any
 
 # Absolute path, so the file is found wherever the program is launched from.
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tickets.json")
+SAMPLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sampleTickets.json")
 
 # On Windows, OneDrive sync or antivirus can lock tickets.json for a moment,
 # so a locked file is retried a few times before the save is given up.
@@ -14,9 +16,13 @@ SAVE_RETRY_DELAY_SECONDS = 0.2
 
 
 def load_records() -> list[dict] | None:
-    """Return the saved records, [] if there is no file yet, None if unreadable."""
     if not os.path.exists(DATA_FILE):
-        return []
+        try:
+            os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+            shutil.copyfile(SAMPLE_FILE, DATA_FILE)
+
+        except OSError:
+            return []
 
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as file:
@@ -31,8 +37,9 @@ def load_records() -> list[dict] | None:
         return None
 
 
+
 def save_records(records: list[dict]) -> bool:
-    """Write all records. Returns True on success, False on failure."""
+    # Write all records. Returns True on success, False on failure.
     temp_file = DATA_FILE + ".tmp"
 
     try:
@@ -68,18 +75,15 @@ def add_record(records: list[dict], record: dict) -> bool:
 
 
 def find_records(records: list[dict], field: str, value: Any) -> list[dict]:
-    """Query: every record whose `field` equals `value`
-    e.g. find_records(records, "department", "Cyber")."""
+    # Query: every record whose `field` equals `value` e.g. find_records(records, "department", "Cyber")
     return [record for record in records if record.get(field) == value]
 
 
 def set_resolution(records: list[dict], ticket_id: str, is_resolved: bool,
                    resolved_at: str | None = None) -> str:
-    """Mark a ticket resolved (with a timestamp) or reopen it, then save.
+    # Mark a ticket resolved (with a timestamp) or reopen it, then save. Returns "updated", "not_found", or "save_failed". If saving fails the
+    # ticket is put back the way it was, so memory and file stay the same.
 
-    Returns "updated", "not_found", or "save_failed". If saving fails the
-    ticket is put back the way it was, so memory and file stay the same.
-    """
     for ticket in records:
         if ticket.get("ticket_id") != ticket_id:
             continue

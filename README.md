@@ -1,40 +1,23 @@
 # INF1103-P9-TEAM1
 
-# Logic Manager (Johanan & Shaun)
-### Based on the AI Mananger, the AI will return a JSON containing things such as:
+## Problem Statement
+ In a large organization like a financial institute or bank, the IT helpdesk team recieves a high volume of tickets which has to be vetted and routed to the appropriate team for remedy. 
+ Especially in this current technology age where AI is incorporated into more and more things, there is a trend of a growing surface area for issues to arise.
 
-#### Severity:
-```
-Low (1) | Medium (2) | High (3) | Critical (4)
-```
-#### Affected Scope:
-```
-Individual (1) | Multiple People (2) | Department (3) | Organization (4)
-```
-#### Confidence Score:
-```
-0.00 (No Confidence) - 1.00 (Full Confidence)
-```
-#### Department:
-```
-Cyber | HR | Finance | Infra
-```
+ This would mean that meaningful time has to be taken from a manpower to vet and route the tickets to the appropriate department. As the number of tickets grows larger and larger, this time taken can siginificantly affect the efficiently of the IT team which wil result in lower KPIs being met.
 
-#### In order to calculate the priority score, we will use the following fomulae
-```
-Severity Score * Affected Scope Score = Priority Score
-P1: 15-16
-P2: 13-14
-P3: 8-12
-P4: 4-7
-P5: 1-3
-```
-#### The logic manager will insert the tickets into a queue system and send it to the respective departments
+ Our team has decided to increase value for the shareholders by creating an IT helpdesk routing system which will:
+  1. Takes a free-text description from an internal bank staff member, written in plain language, of the IT issue they are facing.
+  2. Screens the description before it reaches the AI, rejecting prompt-injection attempts and non-helpdesk requests, blocking attempts to obtain privileged credentials, and flagging any mention of privileged accounts for identity verification.
+  3. Removes sensitive data such as passwords, emails, NRIC numbers and card numbers, so they are never sent to the AI.
+  4. Sends the description to an AI (Google Gemini), which identifies the issue's category, severity and number of people affected, writes a short summary and gives a confidence score.
+  5. Checks the AI's response against a fixed format, retrying if it is malformed or the service is unavailable.
+  6. Calculates a priority score from a fixed scoring rubric and assigns a priority level from P1 (most urgent) to P5 (least urgent), with security incidents affecting multiple users always raised to P1.
+  7. Routes the ticket to the correct department: Cyber, HR, Finance or Infra.
+  8. Flags the ticket for human review when the AI is unsure (confidence below 60%) or a privileged account is involved.
+  9. Saves the processed ticket to a file, storing only the AI's summary and never the user's raw description.
+  10. Displays a ticket queue, filterable by department and ordered by priority, so the most urgent tickets are handled first.
 
-#### If the confidence score is below a threshold of 0.5, we will include a note at the top of the ticket that says 
-```
-Notice: Confidence Score < 0.5 | Please re-route if needed
-```
  
 ## Setup
 

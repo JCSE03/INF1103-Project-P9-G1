@@ -69,6 +69,35 @@ def test_no_temp_file_left_behind():
         assert os.listdir(folder) == ["tickets.json"]
 
 
+def test_locked_file_is_retried():
+    # Windows/OneDrive can lock tickets.json for a moment: the save retries.
+    real_replace = os.replace
+    calls = []
+
+    def locked_once(src, dst):
+        calls.append(dst)
+        if len(calls) == 1:
+            raise PermissionError("file is being used by another process")
+        real_replace(src, dst)
+
+    with tempfile.TemporaryDirectory() as folder, temp_data_file(folder), \
+            patch.object(dm, "SAVE_RETRY_DELAY_SECONDS", 0), \
+            patch.object(dm.os, "replace", locked_once):
+        assert dm.save_records([{"ticket_id": "T-0001"}]) is True
+        assert len(calls) == 2
+        assert dm.load_records() == [{"ticket_id": "T-0001"}]
+
+
+def test_file_locked_too_long_gives_up():
+    def always_locked(src, dst):
+        raise PermissionError("still locked")
+
+    with tempfile.TemporaryDirectory() as folder, temp_data_file(folder), \
+            patch.object(dm, "SAVE_RETRY_DELAY_SECONDS", 0), \
+            patch.object(dm.os, "replace", always_locked):
+        assert dm.save_records([{"ticket_id": "T-0001"}]) is False
+
+
 # ---------- query ----------
 
 def test_find_records_filters_by_field():
@@ -84,6 +113,44 @@ def test_find_records_filters_by_field():
 
 def test_find_records_ignores_records_missing_the_field():
     assert dm.find_records([{"ticket_id": "A"}], "department", "Cyber") == []
+
+
+# ---------- resolve / reopen ----------
+
+def test_resolve_then_reopen_is_saved():
+    with tempfile.TemporaryDirectory() as folder, temp_data_file(folder):
+        records = [{"ticket_id": "T-0001"}, {"ticket_id": "T-0002"}]
+        dm.save_records(records)
+
+        assert dm.set_resolution(records, "T-0002", True, "2026-10-13T05:00:00+00:00") == "updated"
+        saved = dm.load_records()
+        assert saved[1]["is_resolved"] is True
+        assert saved[1]["resolved_at"] == "2026-10-13T05:00:00+00:00"
+        assert "is_resolved" not in saved[0]          # other tickets untouched
+
+        assert dm.set_resolution(records, "T-0002", False, "ignored") == "updated"
+        saved = dm.load_records()
+        assert saved[1]["is_resolved"] is False
+        assert saved[1]["resolved_at"] is None       # reopening clears the time
+
+
+def test_resolve_unknown_ticket_is_not_found():
+    with tempfile.TemporaryDirectory() as folder, temp_data_file(folder):
+        records = [{"ticket_id": "T-0001"}]
+        assert dm.set_resolution(records, "T-9999", True, "now") == "not_found"
+        assert records == [{"ticket_id": "T-0001"}]
+        assert not os.path.exists(dm.DATA_FILE)      # nothing written
+
+
+def test_failed_resolve_save_is_undone():
+    with tempfile.TemporaryDirectory() as folder:
+        blocker = os.path.join(folder, "blocker")
+        with open(blocker, "w") as file:      # a FILE where a folder is needed
+            file.write("x")
+        with temp_data_file(os.path.join(blocker, "tickets.json")):
+            records = [{"ticket_id": "T-0001", "is_resolved": False, "resolved_at": None}]
+            assert dm.set_resolution(records, "T-0001", True, "now") == "save_failed"
+            assert records == [{"ticket_id": "T-0001", "is_resolved": False, "resolved_at": None}]
 
 
 # ---------- test runner ----------

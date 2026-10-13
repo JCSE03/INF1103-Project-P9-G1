@@ -6,9 +6,12 @@ It holds no business rules, AI or file code. For each ticket it calls:
     data_manager.add_record      saves the decision
 and for the queue view:
     data_manager.find_records + logic_manager.sort_queue
+and for the helpdesk dashboard (resolve / reopen a ticket):
+    data_manager.set_resolution
 """
 
 import os
+import re
 import webbrowser
 from datetime import datetime, timezone
 from threading import Lock, Timer
@@ -42,6 +45,33 @@ def _error(reason, code):
     return jsonify({"status": "error", "reason": reason, "manual_review": True}), code
 
 
+# Who raised the ticket. These are facts the user knows, so they come from
+# the form. Category, severity and scope are NEVER asked for: the AI infers them.
+MAX_NAME_LENGTH = 100
+MAX_TITLE_LENGTH = 120
+CONTACT_PATTERN = re.compile(r"^\+?[0-9][0-9 -]{6,18}[0-9]$")
+
+
+def requester_details(form_data):
+    """Check and clean the name, contact number and title.
+    Returns (details, None) if valid, or (None, reason) if not."""
+    fields = {key: form_data.get(key) for key in ("name", "contact_number", "ticket_title")}
+    if not all(isinstance(value, str) and value.strip() for value in fields.values()):
+        return None, "Please fill in your name, contact number and a ticket title."
+
+    name = ai_manager.sanitize(fields["name"], MAX_NAME_LENGTH)
+    # Not shortened first: an over-long number must fail the check, not be cut.
+    contact = ai_manager.sanitize(fields["contact_number"])
+    title = ai_manager.sanitize(fields["ticket_title"], MAX_TITLE_LENGTH)
+
+    if not CONTACT_PATTERN.match(contact):
+        return None, "Contact number should be 8 to 15 digits, e.g. +65 9123 4567."
+
+    # The title is stored and shown, so remove card numbers, passwords etc.
+    title, _ = ai_manager.redact_sensitive(title)
+    return {"name": name, "contact_number": contact, "ticket_title": title}, None
+
+
 # ==========================================
 # SIMPLE PRINT FUNCTION (all console output goes through here)
 # ==========================================
@@ -67,12 +97,21 @@ def submit_ticket():
             "manual_review": True,
         }), 400
 
+    # Checked before the AI call, so a bad form never uses API quota.
+    requester, problem = requester_details(form_data)
+    if problem:
+        return jsonify({"status": "invalid", "reason": problem, "manual_review": True}), 400
+
     # One rate-limit bucket per client address.
     user_id = request.remote_addr or "anonymous"
 
-    # The whole AI pipeline lives in ai_manager. The ticket text is not
-    # printed here, to keep it out of the console.
-    result = ai_manager.classify_ticket(form_data, user_id=user_id)
+    # The whole AI pipeline lives in ai_manager. The AI sees the title and
+    # description only: the name and contact number are never sent to Gemini.
+    # The ticket text is not printed here, to keep it out of the console.
+    description = form_data.get("problem_description")
+    ticket_text = (f"{form_data['ticket_title']}\n{description}"
+                   if isinstance(description, str) and description.strip() else "")
+    result = ai_manager.classify_ticket(ticket_text, user_id=user_id)
     print_message(f"Ticket from {user_id}: {result['status']}")
 
     # Rejected, blocked, rate-limited or failed tickets are reported, not saved.
@@ -82,8 +121,8 @@ def submit_ticket():
     # Business rules: priority, department, human-review flag.
     decision = logic_manager.process_ticket(result)
 
-    # Save. Only the AI's summary is stored, never the raw ticket text,
-    # which may contain details ai_manager redacted before the API call.
+    # Save. The AI's summary is stored, never the raw description, which may
+    # contain details ai_manager redacted before the API call.
     with _data_lock:
         records = data_manager.load_records()
         if records is None:
@@ -94,7 +133,10 @@ def submit_ticket():
         ticket = {
             "ticket_id": f"T-{len(records) + 1:04d}",
             "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            **requester,
             **decision,
+            "is_resolved": False,
+            "resolved_at": None,
         }
         if not data_manager.add_record(records, ticket):
             print_message("Could not write tickets.json; ticket was NOT saved.")
@@ -123,6 +165,50 @@ def queue():
         records = data_manager.find_records(records, "department", department)
 
     return jsonify({"status": "success", "tickets": logic_manager.sort_queue(records)})
+
+
+@app.route("/helpdesk")
+def helpdesk():
+    """Dashboard for helpdesk staff: every department's queue."""
+    return render_template("helpdesk.html", initial_department="all",
+                           departments=logic_manager.DEPARTMENTS)
+
+
+@app.route("/departments/<department>")
+def department_page(department):
+    """The same dashboard, opened on one department's queue."""
+    if department not in logic_manager.DEPARTMENTS:
+        return _error("Unknown department.", 404)
+    return render_template("helpdesk.html", initial_department=department,
+                           departments=logic_manager.DEPARTMENTS)
+
+
+@app.route("/api/tickets/<ticket_id>/toggle-resolution", methods=["POST"])
+def toggle_resolution(ticket_id):
+    """Mark a ticket resolved, or reopen it. Body: {"is_resolved": true|false}."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("is_resolved"), bool):
+        return _error('Send {"is_resolved": true} or {"is_resolved": false}.', 400)
+
+    is_resolved = data["is_resolved"]
+    resolved_at = (datetime.now(timezone.utc).isoformat(timespec="seconds")
+                   if is_resolved else None)
+
+    with _data_lock:
+        records = data_manager.load_records()
+        if records is None:
+            # Unreadable file: do NOT save, or the old data would be overwritten.
+            return _error("Ticket data file could not be read, so nothing was changed.", 503)
+        outcome = data_manager.set_resolution(records, ticket_id, is_resolved, resolved_at)
+
+    if outcome == "not_found":
+        return _error("Ticket not found.", 404)
+    if outcome == "save_failed":
+        return _error("The change could not be saved. Please try again.", 503)
+
+    print_message(f"{ticket_id} {'resolved' if is_resolved else 'reopened'}")
+    return jsonify({"status": "success", "ticket_id": ticket_id,
+                    "is_resolved": is_resolved, "resolved_at": resolved_at})
 
 
 # ==========================================

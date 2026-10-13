@@ -6,7 +6,7 @@ main.py only wires the modules together; the work happens in them:
     ai_manager    - security checks, redaction, Gemini call, validation
     logic_manager - priority score, P1-P5, department routing, review flag
     data_manager  - saves and loads tickets.json, filter query
-    test_ai, test_logic_manager, test_data_manager - offline unit tests
+    test_ai, test_logic_manager, test_data_manager, test_io_manager - offline tests
                     (test_ai also has an optional live Gemini check)
     dummy_ai      - demo run with a fake Gemini (no key needed)
 
@@ -46,6 +46,7 @@ def run_tests(live=False):
     # test_ai is imported first: it supplies a dummy API key when none is set.
     import test_ai
     import test_data_manager
+    import test_io_manager
     import test_logic_manager
 
     try:
@@ -53,7 +54,8 @@ def run_tests(live=False):
     except AssertionError as error:
         sys.exit(f"Offline test FAILED: {error!r}")
 
-    failures = test_logic_manager.run_all_tests() + test_data_manager.run_all_tests()
+    failures = (test_logic_manager.run_all_tests() + test_data_manager.run_all_tests()
+                + test_io_manager.run_all_tests())
     if failures:
         sys.exit(f"{failures} test(s) FAILED")
 

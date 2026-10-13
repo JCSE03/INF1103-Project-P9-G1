@@ -37,7 +37,7 @@ CANNED = [
 ]
 
 
-def fake_call_api(prompt):
+def fake_call_api(prompt: str) -> str:
     """Stands in for ai_manager.call_api: returns the JSON text Gemini would."""
     text = prompt.lower()
     for keyword, category, severity, scope, summary, score in CANNED:
@@ -53,7 +53,7 @@ def fake_call_api(prompt):
     })
 
 
-def run_demo():
+def run_demo() -> bool:
     say = io_manager.print_message
     say("Running DUMMY AI Manager demo (fake Gemini, real pipeline)...")
 

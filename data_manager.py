@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import time
+from typing import Any
 
 # Absolute path, so the file is found wherever the program is launched from.
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tickets.json")
@@ -12,7 +13,7 @@ SAVE_ATTEMPTS = 5
 SAVE_RETRY_DELAY_SECONDS = 0.2
 
 
-def load_records():
+def load_records() -> list[dict] | None:
     """Return the saved records, [] if there is no file yet, None if unreadable."""
     if not os.path.exists(DATA_FILE):
         return []
@@ -30,7 +31,7 @@ def load_records():
         return None
 
 
-def save_records(records):
+def save_records(records: list[dict]) -> bool:
     """Write all records. Returns True on success, False on failure."""
     temp_file = DATA_FILE + ".tmp"
 
@@ -56,7 +57,7 @@ def save_records(records):
         return False
 
 
-def add_record(records, record):
+def add_record(records: list[dict], record: dict) -> bool:
     records.append(record)
 
     if save_records(records):
@@ -66,13 +67,14 @@ def add_record(records, record):
     return False
 
 
-def find_records(records, field, value):
+def find_records(records: list[dict], field: str, value: Any) -> list[dict]:
     """Query: every record whose `field` equals `value`
     e.g. find_records(records, "department", "Cyber")."""
     return [record for record in records if record.get(field) == value]
 
 
-def set_resolution(records, ticket_id, is_resolved, resolved_at=None):
+def set_resolution(records: list[dict], ticket_id: str, is_resolved: bool,
+                   resolved_at: str | None = None) -> str:
     """Mark a ticket resolved (with a timestamp) or reopen it, then save.
 
     Returns "updated", "not_found", or "save_failed". If saving fails the

@@ -6,6 +6,7 @@ import re
 import time
 import unicodedata
 from collections import defaultdict, deque
+from typing import Any
 
 from dotenv import load_dotenv
 from google import genai
@@ -65,7 +66,7 @@ if not audit_log.handlers:
         audit_log.addHandler(logging.NullHandler())
 
 
-def audit(user_id, event, reason, description=""):
+def audit(user_id: str, event: str, reason: str, description: str = "") -> None:
     """Logs a security event with the text's length and a short hash only."""
     digest = hashlib.sha256(description.encode("utf-8")).hexdigest()[:12]
     audit_log.info(
@@ -161,7 +162,7 @@ _INVISIBLE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]")
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # keeps tab and newline
 
 
-def sanitize(text, max_length=MAX_DESCRIPTION_LENGTH):
+def sanitize(text: str, max_length: int = MAX_DESCRIPTION_LENGTH) -> str:
     """Normalises look-alike unicode, strips invisible/control characters and
     our own delimiter tag (so the user cannot close the data block), and caps
     the length."""
@@ -173,7 +174,7 @@ def sanitize(text, max_length=MAX_DESCRIPTION_LENGTH):
     return text.strip()[:max_length]
 
 
-def extract_description(record):
+def extract_description(record: dict | str | None) -> str:
     """Takes a string or a dict with "problem_description"; returns clean text."""
     if isinstance(record, dict):
         record = record.get("problem_description", "")
@@ -192,7 +193,7 @@ _REDACTIONS = [
 ]
 
 
-def redact_sensitive(text):
+def redact_sensitive(text: str) -> tuple[str, int]:
     """Returns (redacted_text, number_of_redactions)."""
     total = 0
     for pattern, replacement in _REDACTIONS:
@@ -201,7 +202,7 @@ def redact_sensitive(text):
     return text, total
 
 
-def build_prompt(description):
+def build_prompt(description: str) -> str:
     """Wraps the untrusted description as data for the model."""
     return f"<ticket_description>\n{description}\n</ticket_description>"
 
@@ -249,7 +250,7 @@ _PRIVILEGED_MENTION = re.compile(
 )
 
 
-def security_check(description):
+def security_check(description: str) -> tuple[str, str | None]:
     """Pure function. Returns (status, reason) where status is "allow",
     "flagged" (allowed, but needs identity verification), "invalid" or
     "blocked". The caller decides how to display it."""
@@ -273,7 +274,7 @@ def security_check(description):
 _request_times = defaultdict(deque)
 
 
-def allow_request(user_id, now=None):
+def allow_request(user_id: str, now: float | None = None) -> bool:
     """Sliding-window limiter. Returns False when the user is over the limit."""
     now = time.time() if now is None else now
     window = _request_times[user_id]
@@ -292,7 +293,7 @@ def allow_request(user_id, now=None):
 _last_api_error = None
 
 
-def quota_info(error_text):
+def quota_info(error_text: str) -> tuple[bool, float | None]:
     """Reads a 429 message. Returns (fatal, wait_seconds): fatal is True when
     the DAILY quota is gone or the model has no quota on this key's tier
     (retrying cannot help); wait is Google's suggested delay, or None."""
@@ -304,7 +305,7 @@ def quota_info(error_text):
     return fatal, float(match.group(1)) if match else None
 
 
-def call_api(prompt):
+def call_api(prompt: str) -> str | None:
     global _last_api_error
     try:
         response = client.models.generate_content(
@@ -344,7 +345,7 @@ def call_api(prompt):
 
 # --- parse and validate the response -----------------------------------
 
-def parse_response(raw):
+def parse_response(raw: str | None) -> Any:
     if raw is None:
         logging.error("No response received from Gemini.")
         return None
@@ -361,12 +362,12 @@ def parse_response(raw):
         return None
 
 
-def validate_response(data):
+def validate_response(data: Any) -> bool:
     """Schema check only, no domain logic."""
     if not isinstance(data, dict) or not set(REQUIRED_KEYS) <= data.keys():
         return False
 
-    def one_of(value, allowed):
+    def one_of(value: Any, allowed: set[str]) -> bool:
         return isinstance(value, str) and value in allowed
 
     score = data["confidence_score"]
@@ -380,7 +381,7 @@ def validate_response(data):
     )
 
 
-def clean_summary(summary):
+def clean_summary(summary: str) -> str:
     """Model text may echo user input: strip control characters, cap the
     length. Still escape it wherever it is displayed (HTML, email, SQL)."""
     return sanitize(summary, MAX_SUMMARY_LENGTH)
@@ -388,12 +389,12 @@ def clean_summary(summary):
 
 # --- entry point for io_manager / logic_manager ------------------------
 
-def _rejected(status, reason):
+def _rejected(status: str, reason: str) -> dict:
     # Anything that is not a clean success goes to a human, not into the void.
     return {"status": status, "reason": reason, "manual_review": True}
 
 
-def _retry_delay(error):
+def _retry_delay(error: dict | None) -> float:
     """Seconds to wait before retrying, based on the last API failure."""
     code = error["code"] if error else None
     if code == 429:
@@ -404,7 +405,7 @@ def _retry_delay(error):
     return RETRY_DELAY_SECONDS
 
 
-def _failure_reason(error):
+def _failure_reason(error: dict | None) -> str:
     code = error["code"] if error else None
     if code == 429:
         return "The AI service is rate limited or out of quota. Try again later."
@@ -413,7 +414,8 @@ def _failure_reason(error):
     return "AI returned no valid classification after retries."
 
 
-def classify_ticket(record, max_retries=2, user_id="anonymous"):
+def classify_ticket(record: dict | str | None, max_retries: int = 2,
+                    user_id: str = "anonymous") -> dict:
     """Classifies one ticket from its problem description alone, given as a
     string or a dict with "problem_description".
 

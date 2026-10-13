@@ -23,7 +23,7 @@ import argparse
 import sys
 
 
-def parse_args(argv=None):
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="AI Helpdesk Ticket system")
     parser.add_argument("--test", action="store_true",
                         help="run the tests instead of starting the web app")
@@ -42,7 +42,7 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def run_tests(live=False):
+def run_tests(live: bool = False) -> None:
     # test_ai is imported first: it supplies a dummy API key when none is set.
     import test_ai
     import test_data_manager
@@ -63,14 +63,14 @@ def run_tests(live=False):
         test_ai.run_live_check()
 
 
-def run_demo():
+def run_demo() -> None:
     import dummy_ai
 
     if not dummy_ai.run_demo():
         sys.exit(1)
 
 
-def run_web(host, port, auto_open):
+def run_web(host: str, port: int, auto_open: bool) -> None:
     # io_manager imports ai_manager, which refuses to load without an API key.
     try:
         import io_manager
@@ -79,7 +79,7 @@ def run_web(host, port, auto_open):
     io_manager.run_server(host=host, port=port, auto_open=auto_open)
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if args.demo:
         run_demo()

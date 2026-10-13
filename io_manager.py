@@ -16,7 +16,7 @@ import webbrowser
 from datetime import datetime, timezone
 from threading import Lock, Timer
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 
 import ai_manager
 import data_manager
@@ -40,8 +40,11 @@ STATUS_CODES = {
 # the ticket file at a time, or two tickets could overwrite each other.
 _data_lock = Lock()
 
+# What a Flask route can return: a page, JSON, or JSON with a status code.
+RouteResult = str | Response | tuple[Response, int]
 
-def _error(reason, code):
+
+def _error(reason: str, code: int) -> tuple[Response, int]:
     return jsonify({"status": "error", "reason": reason, "manual_review": True}), code
 
 
@@ -52,7 +55,7 @@ MAX_TITLE_LENGTH = 120
 CONTACT_PATTERN = re.compile(r"^\+?[0-9][0-9 -]{6,18}[0-9]$")
 
 
-def requester_details(form_data):
+def requester_details(form_data: dict) -> tuple[dict | None, str | None]:
     """Check and clean the name, contact number and title.
     Returns (details, None) if valid, or (None, reason) if not."""
     fields = {key: form_data.get(key) for key in ("name", "contact_number", "ticket_title")}
@@ -75,7 +78,7 @@ def requester_details(form_data):
 # ==========================================
 # SIMPLE PRINT FUNCTION (all console output goes through here)
 # ==========================================
-def print_message(message):
+def print_message(message: str) -> None:
     print(message)
 
 
@@ -83,12 +86,12 @@ def print_message(message):
 # FLASK WEB ROUTES (connecting HTML to Python)
 # ==========================================
 @app.route("/")
-def home():
+def home() -> str:
     return render_template("index.html")
 
 
 @app.route("/submit-ticket", methods=["POST"])
-def submit_ticket():
+def submit_ticket() -> RouteResult:
     form_data = request.get_json(silent=True)
     if not isinstance(form_data, dict):
         return jsonify({
@@ -150,7 +153,7 @@ def submit_ticket():
 
 
 @app.route("/queue")
-def queue():
+def queue() -> RouteResult:
     """Saved tickets, most urgent first. Optional ?department=Cyber|HR|Finance|Infra."""
     department = request.args.get("department")
     if department and department not in logic_manager.DEPARTMENTS:
@@ -168,14 +171,14 @@ def queue():
 
 
 @app.route("/helpdesk")
-def helpdesk():
+def helpdesk() -> str:
     """Dashboard for helpdesk staff: every department's queue."""
     return render_template("helpdesk.html", initial_department="all",
                            departments=logic_manager.DEPARTMENTS)
 
 
 @app.route("/departments/<department>")
-def department_page(department):
+def department_page(department: str) -> RouteResult:
     """The same dashboard, opened on one department's queue."""
     if department not in logic_manager.DEPARTMENTS:
         return _error("Unknown department.", 404)
@@ -184,7 +187,7 @@ def department_page(department):
 
 
 @app.route("/api/tickets/<ticket_id>/toggle-resolution", methods=["POST"])
-def toggle_resolution(ticket_id):
+def toggle_resolution(ticket_id: str) -> RouteResult:
     """Mark a ticket resolved, or reopen it. Body: {"is_resolved": true|false}."""
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or not isinstance(data.get("is_resolved"), bool):
@@ -214,11 +217,13 @@ def toggle_resolution(ticket_id):
 # ==========================================
 # SERVER START-UP (called by main.py)
 # ==========================================
-def open_browser(host, port):
-    webbrowser.open(f"http://{host}:{port}")
+def open_browser(host: str, port: int) -> None:
+    """Open the ticket form and the helpdesk dashboard in two tabs."""
+    webbrowser.open(f"http://{host}:{port}/")
+    webbrowser.open(f"http://{host}:{port}/helpdesk")
 
 
-def run_server(host="127.0.0.1", port=5000, auto_open=True):
+def run_server(host: str = "127.0.0.1", port: int = 5000, auto_open: bool = True) -> None:
     print_message("Starting web server... Press CTRL+C in the terminal to stop it.")
     if auto_open:
         Timer(1, open_browser, args=(host, port)).start()

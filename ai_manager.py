@@ -14,7 +14,7 @@ from google.genai import types
 
 logging.basicConfig(level=logging.ERROR)
 
-# --- configuration -----------------------------------------------------
+# config
 
 load_dotenv(override=True)  # .env wins over a stale key in the environment
 
@@ -24,24 +24,24 @@ if not api_key:
         "GEMINI_API_KEY not found. Copy .env.example to .env and add your key."
     )
 
-API_TIMEOUT_MS = 30_000  # so a hung request cannot block forever
+API_TIMEOUT_MS = 30_000  # timeout for Gemini API calls, in milliseconds
 client = genai.Client(
     api_key=api_key, http_options=types.HttpOptions(timeout=API_TIMEOUT_MS)
 )
-# Set GEMINI_MODEL in .env to try a model with a bigger quota.
+#  GEMINI_MODEL in .env to try a model with a bigger quota. (gemini-3.5-flash-lite)
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 MAX_DESCRIPTION_LENGTH = 2000
 MAX_SUMMARY_LENGTH = 300
-RATE_LIMIT_MAX_REQUESTS = 10  # per user, for tickets that reach the API
+RATE_LIMIT_MAX_REQUESTS = 10  # per user per RATE_LIMIT_WINDOW_SECONDS (60s)
 RATE_LIMIT_WINDOW_SECONDS = 60
 RETRY_DELAY_SECONDS = 2
-RATE_LIMIT_RETRY_DELAY_SECONDS = 15  # on a 429 with no retry hint
+RATE_LIMIT_RETRY_DELAY_SECONDS = 15  # on a 429 with no retry hint and the user is over the limit
 MAX_RETRY_WAIT_SECONDS = 60
-SERVER_ERROR_CODES = (500, 502, 503, 504)  # Google-side overload
+SERVER_ERROR_CODES = (500, 502, 503, 504)  # Google-side overloaded or down
 SERVER_ERROR_RETRY_DELAY_SECONDS = 5
 
-# Must match the keys of logic_manager's ROUTING table exactly.
+# Matching the keys of logic manager routing table exactly
 VALID_CATEGORIES = {
     "hardware", "software", "network", "account_access",
     "cybersecurity", "hr", "finance", "other",
@@ -52,7 +52,7 @@ REQUIRED_KEYS = (
     "category", "severity", "affected_scope", "summary", "confidence_score",
 )
 
-# --- security audit log (never stores ticket text) ---------------------
+# -security audit logging -------------------------------------------------
 
 audit_log = logging.getLogger("security_audit")
 audit_log.setLevel(logging.INFO)
@@ -76,7 +76,7 @@ def audit(user_id: str, event: str, reason: str, description: str = "") -> None:
 
 
 # --- classification instructions ---------------------------------------
-# The user supplies ONE thing, a free-text description; the model infers
+# user gives free text input then ai will infer from it
 # category, severity and scope from it alone.
 
 SYSTEM_INSTRUCTION = """
@@ -181,7 +181,7 @@ def extract_description(record: dict | str | None) -> str:
     return sanitize(record) if isinstance(record, str) else ""
 
 
-# --- sensitive data redaction (applied just before the API call) -------
+# --- sensitive data redaction for privacy reasons (applied just before the API call) -------
 
 _REDACTIONS = [
     (re.compile(r"\b(password|passcode|passphrase|pin)\b(\s*(?:is|:|=)\s*)\S+",
@@ -242,7 +242,7 @@ _DISCLOSURE = re.compile(
     r"|what(?:'s|\s+is|\s+are))\b" + _NOT_RESET + r"{0,30}?\b"
     + _PRIV + r"\s+(?:password|credentials?)\b"
 )
-# Any privileged-account mention: allowed, but flagged for verification.
+# Any privileged-account mention: allowed, but flagged for verification, so manually need to double check user is authorized
 _PRIVILEGED_MENTION = re.compile(
     r"\b(?:admin|administrator|root|privileged|domain\s+admin|service\s+account)"
     r"\b(?:\s+account)?\s+(?:password|credentials?|login|access|rights"
@@ -286,7 +286,7 @@ def allow_request(user_id: str, now: float | None = None) -> bool:
     return True
 
 
-# --- Gemini call -------------------------------------------------------
+# --- Gemini calling -------------------------------------------------------
 
 # Details of the latest API failure ({"code", "fatal", "wait"}), read by
 # classify_ticket to choose a retry delay. Fine for a single-threaded program.

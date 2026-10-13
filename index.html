@@ -271,13 +271,14 @@
 
                 const data = await response.json();
 
-                if (!response.ok || !data.success) {
-                    throw new Error(data.error || "Could not submit the support request.");
+                if (!response.ok || data.status !== "success") {
+                    throw new Error(data.reason || "Could not submit the support request.");
                 }
 
                 form.reset();
                 resultBox.textContent =
-                    "Your support request has been submitted successfully. Our IT team will be in touch.";
+                    `Request ${data.ticket.ticket_id} submitted (${data.ticket.priority}, ` +
+                    `routed to ${data.ticket.department}). Our IT team will be in touch.`;
                 resultBox.className = "success";
                 resultBox.style.display = "block";
             } catch (error) {

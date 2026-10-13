@@ -325,6 +325,14 @@
                 width: 100%;
             }
         }
+        .review-note {
+            margin: 12px 0 0;
+            padding: 8px 10px;
+            color: #664d03;
+            background: #fff3cd;
+            border-radius: 6px;
+            font-size: 12px;
+        }
     </style>
 </head>
 
@@ -437,6 +445,19 @@
             return card;
         }
 
+        // Active (queued) and total tickets per department.
+        function queueCounts(tickets) {
+            const counts = { departments: {} };
+            for (const department of departments) {
+                const inDepartment = tickets.filter(t => t.department === department);
+                counts.departments[department] = {
+                    total: inDepartment.length,
+                    queued: inDepartment.filter(t => !t.is_resolved).length
+                };
+            }
+            return counts;
+        }
+
         function renderQueue(queue) {
             const summary = document.getElementById("queue-summary");
             summary.replaceChildren();
@@ -511,8 +532,8 @@
 
                 const data = await response.json();
 
-                if (!response.ok || !data.success) {
-                    alert(data.error || "Could not update the ticket.");
+                if (!response.ok || data.status !== "success") {
+                    alert(data.reason || "Could not update the ticket.");
                     return;
                 }
 
@@ -523,7 +544,9 @@
         }
 
         function renderTicket(ticket) {
-            const result = ticket.result || {};
+            // Saved tickets are flat records: AI fields, priority and
+            // department sit directly on the ticket (see logic_manager).
+            const result = ticket;
             const card = document.createElement("article");
 
             card.className = ticket.is_resolved
@@ -535,11 +558,11 @@
 
             const departmentText = document.createElement("span");
             departmentText.textContent =
-                `${text(result.department)} · ${text(result.queue_status)}`;
+                `${text(ticket.priority, "P?")} · ${text(result.department)}`;
 
             const ticketInfo = document.createElement("span");
             ticketInfo.textContent =
-                `${text(ticket.ticket_id)} · Position ${text(ticket.queue_position)}`;
+                `${text(ticket.ticket_id)} · Score ${text(ticket.priority_score)}`;
 
             banner.append(departmentText, ticketInfo);
 
@@ -586,7 +609,11 @@
             const details = document.createElement("div");
             addField(details, "Submitted by", ticket.name);
             addField(details, "Contact number", ticket.contact_number);
-            addField(details, "Problem description", ticket.problem_description);
+            // The raw description is not stored (it may contain redacted
+            // details); the AI summary is shown in the classification box.
+            addField(details, "Submitted", ticket.submitted_at
+                ? new Date(ticket.submitted_at).toLocaleString()
+                : undefined);
 
             const classification = document.createElement("aside");
             classification.className = "classification";
@@ -616,6 +643,15 @@
 
             grid.append(details, classification);
             body.append(headerRow, grid);
+
+            if (ticket.needs_review && !ticket.is_resolved) {
+                const note = document.createElement("p");
+                note.className = "review-note";
+                note.textContent =
+                    "Needs human review: low AI confidence or a privileged account was mentioned.";
+                body.appendChild(note);
+            }
+
             card.append(banner, body);
 
             return card;
@@ -625,8 +661,9 @@
             const department = departmentFilter.value;
 
             try {
+                // /queue returns tickets already sorted most urgent first.
                 const response = await fetch(
-                    `/api/tickets?department=${encodeURIComponent(department)}`,
+                    `/queue?department=${encodeURIComponent(department === "all" ? "" : department)}`,
                     {
                         cache: "no-store"
                     }
@@ -641,7 +678,7 @@
                 activeList.replaceChildren();
                 resolvedList.replaceChildren();
 
-                renderQueue(data.queue);
+                renderQueue(queueCounts(data.tickets));
 
                 const activeTickets = data.tickets.filter(
                     (ticket) => !ticket.is_resolved

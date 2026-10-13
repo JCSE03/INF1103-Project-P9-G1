@@ -12,7 +12,10 @@ import data_manager as dm
 
 
 def temp_data_file(folder, name="tickets.json"):
-    return patch.object(dm, "DATA_FILE", os.path.join(folder, name))
+    # Point both files at the temp folder. There is no sample there, so a
+    # missing tickets.json still starts empty unless a test creates one.
+    return patch.multiple(dm, DATA_FILE=os.path.join(folder, name),
+                          SAMPLE_FILE=os.path.join(folder, "sampleTickets.json"))
 
 
 # ---------- load ----------
@@ -20,6 +23,22 @@ def temp_data_file(folder, name="tickets.json"):
 def test_missing_file_gives_empty_list():
     with tempfile.TemporaryDirectory() as folder, temp_data_file(folder):
         assert dm.load_records() == []
+
+
+def test_missing_file_is_seeded_from_sample():
+    with tempfile.TemporaryDirectory() as folder, temp_data_file(folder):
+        with open(dm.SAMPLE_FILE, "w") as file:
+            file.write('[{"ticket_id": "T-0001"}]')
+        assert dm.load_records() == [{"ticket_id": "T-0001"}]   # copied from the sample
+        assert os.path.exists(dm.DATA_FILE)                     # tickets.json now exists
+
+
+def test_existing_file_is_not_replaced_by_sample():
+    with tempfile.TemporaryDirectory() as folder, temp_data_file(folder):
+        with open(dm.SAMPLE_FILE, "w") as file:
+            file.write('[{"ticket_id": "SAMPLE"}]')
+        dm.save_records([{"ticket_id": "REAL"}])
+        assert dm.load_records() == [{"ticket_id": "REAL"}]
 
 
 def test_corrupt_file_gives_none():

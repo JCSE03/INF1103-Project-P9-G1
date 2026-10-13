@@ -44,6 +44,7 @@ def fake_app(reply=AI_REPLY):
         patch.object(ai_manager, "call_api", fake_call_api),
         patch.object(ai_manager, "RETRY_DELAY_SECONDS", 0),
         patch.object(data_manager, "DATA_FILE", os.path.join(folder, "tickets.json")),
+        patch.object(data_manager, "SAMPLE_FILE", os.path.join(folder, "sampleTickets.json")),
     ]
     for p in patches:
         p.start()

@@ -38,7 +38,9 @@ def _error(reason: str, code: int) -> tuple[Response, int]:
 
 MAX_NAME_LENGTH = 100
 MAX_TITLE_LENGTH = 120
-CONTACT_PATTERN = re.compile(r"^\+?[0-9][0-9 -]{6,18}[0-9]$")
+# sg num: optional +65, then 8 digits starting with 3, 6, 8 or 9
+# (a space or dash in the middle is allowed), e.g. 91234567, +65 9123 4567.
+CONTACT_PATTERN = re.compile(r"^(\+65[ -]?)?[3689][0-9]{3}[ -]?[0-9]{4}$")
 
 
 def requester_details(form_data: dict) -> tuple[dict | None, str | None]:
@@ -52,7 +54,7 @@ def requester_details(form_data: dict) -> tuple[dict | None, str | None]:
     title = ai_manager.sanitize(fields["ticket_title"], MAX_TITLE_LENGTH)
 
     if not CONTACT_PATTERN.match(contact):
-        return None, "Contact number should be 8 to 15 digits, e.g. +65 9123 4567."
+        return None, "Please enter a valid 8-digit Singapore number, e.g. 9123 4567."
 
     title, _ = ai_manager.redact_sensitive(title)
     return {"name": name, "contact_number": contact, "ticket_title": title}, None

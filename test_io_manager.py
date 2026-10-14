@@ -74,9 +74,13 @@ def test_missing_details_are_rejected():
 
 
 def test_contact_number_format():
-    for good in ("91234567", "+65 9123 4567", "6123-4567"):
+    for good in ("91234567", "+65 9123 4567", "6123-4567", "+6581234567", "3123 4567"):
         assert io_manager.requester_details(dict(FORM, contact_number=good))[1] is None, good
-    for bad in ("1234", "call me", "+65 9123 456x", "1" * 25):
+    for bad in ("1234", "call me", "+65 9123 456x", "1" * 25,
+                "9000123412",      # too long
+                "9123456",         # too short
+                "51234567",        # Singapore numbers don't start with 5
+                "+60 9123 4567"):  # not a Singapore code
         assert io_manager.requester_details(dict(FORM, contact_number=bad))[1], bad
 
 

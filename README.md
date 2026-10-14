@@ -58,7 +58,7 @@ Once the app is running:
 - Helpdesk dashboard: http://localhost:5000/helpdesk
 - One department's queue: http://localhost:5000/departments/Infra (or Cyber, HR, Finance)
 
-Tickets are saved in `data/tickets.json`, which is gitignored. Delete it to start with an empty queue.
+Tickets are saved in data/tickets.json, which is gitignored. If the file is missing, it is created from the 19 demo tickets in sampleTickets.json
 
 ## Docker
 

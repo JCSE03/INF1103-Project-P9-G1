@@ -7,7 +7,7 @@ AIProvider -> ResponseParser -> ResponseValidator -> ClassificationResult.
 The module-level functions at the bottom are a TEMPORARY compatibility layer
 for io_manager.py and the existing tests; new code should use AIManager.
 """
-
+from logging.handlers import RotatingFileHandler
 import hashlib
 import json
 import logging
@@ -466,17 +466,25 @@ class RateLimiter:
 
 
 class AuditLogger:
-    """Writes security events to security_audit.log: only the text's length
-    and a short hash, never the text itself."""
+    """Writes security events to security_audit.log with rotation: 
+    only the text's length and a short hash, never the text itself.
+    """
 
     def __init__(self, name: str = "security_audit",
-                 filename: str = "security_audit.log") -> None:
+                 filename: str = "security_audit.log",
+                 max_bytes: int = 5 * 1024 * 1024,  # 5 MB per file
+                 backup_count: int = 3) -> None:      # Keep 3 backup files
         self._logger = logging.getLogger(name)
         self._logger.setLevel(logging.INFO)
         self._logger.propagate = False
         if not self._logger.handlers:
             try:
-                handler = logging.FileHandler(filename)
+                # Use RotatingFileHandler instead of FileHandler
+                handler = RotatingFileHandler(
+                    filename, 
+                    maxBytes=max_bytes, 
+                    backupCount=backup_count
+                )
                 handler.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
                 self._logger.addHandler(handler)
             except OSError:

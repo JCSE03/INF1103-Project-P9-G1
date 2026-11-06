@@ -7,6 +7,7 @@ from threading import Lock, Timer
 from flask import Flask, Response, jsonify, render_template, request
 
 import ai_manager
+import analytics
 import data_manager
 import logic_manager
 
@@ -142,6 +143,29 @@ def queue() -> RouteResult:
         records = data_manager.find_records(records, "department", department)
 
     return jsonify({"status": "success", "tickets": logic_manager.sort_queue(records)})
+
+
+@app.route("/analytics")
+def analytics_page() -> str:
+    """Charts and statistics for IT managers."""
+    return render_template("analytics.html", departments=logic_manager.DEPARTMENTS)
+
+
+@app.route("/api/analytics")
+def analytics_report() -> RouteResult:
+    department = request.args.get("department")
+    if department and department not in logic_manager.DEPARTMENTS:
+        return _error("Unknown department.", 400)
+
+    with _data_lock:
+        records = data_manager.load_records()
+    if records is None:
+        return _error("Ticket data file could not be read.", 503)
+
+    if department:
+        records = data_manager.find_records(records, "department", department)
+
+    return jsonify({"status": "success", "report": analytics.AnalyticsReport().build(records)})
 
 
 @app.route("/helpdesk")

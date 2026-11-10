@@ -73,7 +73,7 @@
 
         .kpis {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
             gap: 14px;
             margin-bottom: 20px;
         }
@@ -108,6 +108,27 @@
         svg line { stroke: var(--line); }
 
         .empty { padding: 26px 0; text-align: center; color: var(--muted); }
+
+        .wide { grid-column: 1 / -1; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { padding: 6px 8px; text-align: left; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
+        td { padding: 8px; border-bottom: 1px solid var(--line); }
+        td.title { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: bold; }
+        .badge.overdue { background: #fdecea; color: var(--alert); }
+        .badge.due_soon { background: #fff4dc; color: #8a5a00; }
+
+        .summary { margin-bottom: 16px; }
+        .summary h4 { margin: 14px 0 0; font-size: 16px; color: var(--navy); }
+        .summary ul { margin: 6px 0 0; padding-left: 20px; }
+        .summary li { margin-bottom: 4px; }
+        .summary .watch { margin: 12px 0 0; }
+        .summary .ai-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+        button.primary { color: white; background: var(--blue); border-color: var(--blue); }
+        button.primary:hover { background: #12558c; }
+        button:disabled { opacity: 0.6; cursor: wait; }
 
         .message {
             padding: 14px 16px;
@@ -157,7 +178,20 @@
         <div id="content" hidden>
             <section class="kpis" id="kpis"></section>
 
+            <article class="card summary">
+                <h3>AI summary</h3>
+                <p class="note">The AI reads only the numbers on this page, never ticket text, and writes a short summary. Each new summary uses one AI request, so please use it sparingly.</p>
+                <button id="summarise" type="button" class="primary">Generate AI summary</button>
+                <div id="summary-result" aria-live="polite"></div>
+            </article>
+
             <section class="grid">
+                <article class="card wide">
+                    <h3>Tickets at risk of missing their target time</h3>
+                    <p class="note" id="risk-note"></p>
+                    <div id="risk-table"></div>
+                </article>
+
                 <article class="card">
                     <h3>Tickets by priority</h3>
                     <p class="note">P1 is the most urgent.</p>
@@ -257,14 +291,66 @@
                 + `<line x1="${left}" x2="${width}" y1="${height - bottom}" y2="${height - bottom}"/>${body}</svg>`;
         }
 
+        const hoursText = (h) => (h >= 48 ? (h / 24).toFixed(1) + " days" : h + " h");
+        const STATUS_LABEL = {overdue: "Overdue", due_soon: "Due soon"};
+
+        function riskTable(risk) {
+            if (!risk.tickets.length) return empty("No tickets are overdue or close to their target time.");
+            const rows = risk.tickets.map((t) =>
+                `<tr><td>${esc(t.ticket_id)}</td><td class="title" title="${esc(t.title)}">${esc(t.title)}</td>`
+                + `<td>${esc(t.priority)}</td><td>${esc(t.department)}</td><td>${hoursText(Number(t.hours_open))}</td>`
+                + `<td>${Number(t.limit_hours)} h</td><td><span class="badge ${esc(t.status)}">${esc(STATUS_LABEL[t.status] || t.status)}</span></td></tr>`).join("");
+            return `<div style="overflow-x: auto"><table><thead><tr><th>Ticket</th><th>Title</th><th>Priority</th>`
+                + `<th>Department</th><th>Open for</th><th>Target</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        }
+
+        function showRisk(risk) {
+            if (!risk) {
+                $("risk-note").textContent = "";
+                $("risk-table").innerHTML = empty("Not available");
+                return;
+            }
+            const targets = Object.entries(risk.targets).map(([p, h]) => `${p} ${h} h`).join(" · ");
+            let note = `${risk.overdue} overdue, ${risk.due_soon} due soon. Target times: ${targets}.`;
+            if (risk.overdue + risk.due_soon > risk.tickets.length) note += ` Showing the ${risk.tickets.length} worst.`;
+            if (risk.policy_problems.length) note += " Note: " + risk.policy_problems.join(" ");
+            $("risk-note").textContent = note;
+            $("risk-table").innerHTML = riskTable(risk);
+        }
+
+        async function summarise() {
+            const button = $("summarise"), box = $("summary-result");
+            const department = $("department").value;
+            button.disabled = true;
+            box.innerHTML = empty("Asking the AI…");
+            try {
+                const response = await fetch("/api/analytics/summary" + (department ? "?department=" + encodeURIComponent(department) : ""), {method: "POST"});
+                const data = await response.json();
+                if (data.status !== "success") {
+                    box.innerHTML = empty(data.reason || "The summary could not be created.");
+                    return;
+                }
+                const s = data.summary;
+                const list = (items) => (items.length ? `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "");
+                box.innerHTML = `<h4>${esc(s.headline)}</h4>${list(s.highlights)}`
+                    + (s.watch_items.length ? `<p class="watch"><b>Watch:</b></p>${list(s.watch_items)}` : "")
+                    + `<p class="ai-note">AI-generated from the numbers on this page${data.cached ? " (reused: the numbers have not changed)" : ""}. Check it against the charts.</p>`;
+            } catch (error) {
+                box.innerHTML = empty("The summary could not be created.");
+            } finally {
+                button.disabled = false;
+            }
+        }
+
         const STACK = [{key: "open", color: OPEN, name: "open"}, {key: "resolved", color: DONE, name: "resolved"}];
 
-        function showKpis(o) {
+        function showKpis(o, risk) {
             const cards = [
                 [o.total, "Total tickets", ""],
                 [o.open, "Open", ""],
                 [o.resolved, `Resolved (${percent(o.resolution_rate)})`, ""],
                 [o.urgent_open, "Urgent open (P1–P2)", o.urgent_open ? "alert" : ""],
+                [risk ? risk.overdue : "–", "Past target time", risk && risk.overdue ? "alert" : ""],
                 [o.needs_review_open, "Open, needs review", ""],
                 [percent(o.average_confidence), "Average AI confidence", ""],
             ];
@@ -280,7 +366,8 @@
             if (total === 0) {
                 showMessage("No tickets yet. Submit one and its statistics will appear here.", true);
             } else {
-                showKpis(report.overview);
+                showKpis(report.overview, report.at_risk);
+                showRisk(report.at_risk);
                 $("chart-priority").innerHTML = unavailable("by_priority") ? empty("Not available") : bars(report.by_priority, STACK);
                 $("chart-department").innerHTML = unavailable("by_department") ? empty("Not available") : bars(report.by_department, STACK);
                 $("chart-category").innerHTML = unavailable("by_category") ? empty("Not available") : bars(report.by_category, STACK);
@@ -325,7 +412,8 @@
             }
         }
 
-        $("department").addEventListener("change", load);
+        $("department").addEventListener("change", () => { $("summary-result").innerHTML = ""; load(); });
+        $("summarise").addEventListener("click", summarise);
         $("refresh").addEventListener("click", load);
         load();
         setInterval(load, REFRESH_MS);

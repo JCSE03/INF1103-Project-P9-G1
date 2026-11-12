@@ -1,0 +1,26 @@
+# Continuous Integration: runs the offline test suite on every push and pull
+# request. Tests run INSIDE the project's Docker image, so CI checks exactly
+# what the assessor will run. No API key is needed: the tests fake Gemini.
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:   # adds a "Run workflow" button on the Actions tab
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v5
+
+      - name: Build the Docker image
+        run: docker build -t htprs .
+
+      - name: Run the offline tests inside the container
+        run: docker run --rm htprs python main.py --test

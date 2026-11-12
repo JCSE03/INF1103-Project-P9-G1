@@ -165,6 +165,62 @@
             border: 1px solid #f5c2c7;
         }
 
+        #troubleshoot-box {
+            display: none;
+            margin-top: 20px;
+            padding: 16px 18px;
+            background: #f0f7ff;
+            border: 1px solid #b6d6f2;
+            border-radius: 8px;
+            line-height: 1.45;
+        }
+
+        #troubleshoot-box h2 {
+            margin: 0 0 6px;
+            color: var(--navy);
+            font-size: 17px;
+        }
+
+        #troubleshoot-box p {
+            margin: 0 0 10px;
+        }
+
+        #troubleshoot-box ol {
+            margin: 0 0 4px;
+            padding-left: 22px;
+        }
+
+        #troubleshoot-box li {
+            margin-bottom: 6px;
+        }
+
+        .choice-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .choice-row button {
+            margin-top: 14px;
+        }
+
+        button.secondary {
+            color: var(--blue-dark);
+            background: white;
+            border: 1px solid var(--blue);
+        }
+
+        button.secondary:hover {
+            background: #e6f1fb;
+        }
+
+        @media (max-width: 560px) {
+            .choice-row {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+        }
+
         @media (max-width: 560px) {
             body {
                 padding: 20px 12px;
@@ -236,6 +292,16 @@
 
             <button type="submit" id="submit-button">Submit Support Request</button>
 
+            <div id="troubleshoot-box" role="region" aria-live="polite">
+                <h2>Try these steps first</h2>
+                <p id="troubleshoot-summary"></p>
+                <ol id="troubleshoot-steps"></ol>
+                <div class="choice-row">
+                    <button type="button" id="solved-button">It's fixed, cancel my request</button>
+                    <button type="button" id="unsolved-button" class="secondary">Still not working, send to IT</button>
+                </div>
+            </div>
+
             <div id="result-box" role="status" aria-live="polite"></div>
         </form>
     </main>
@@ -244,6 +310,44 @@
         const form = document.getElementById("ticket-form");
         const button = document.getElementById("submit-button");
         const resultBox = document.getElementById("result-box");
+        const troubleshootBox = document.getElementById("troubleshoot-box");
+        const stepsList = document.getElementById("troubleshoot-steps");
+        const solvedButton = document.getElementById("solved-button");
+        const unsolvedButton = document.getElementById("unsolved-button");
+        let pendingId = null;
+
+        function showResult(text, kind) {
+            resultBox.textContent = text;
+            resultBox.className = kind;
+            resultBox.style.display = "block";
+        }
+
+        function showSubmitted(data) {
+            showResult(
+                `Request ${data.ticket.ticket_id} submitted (${data.ticket.priority}, ` +
+                `routed to ${data.ticket.department}). Our IT team will be in touch.`,
+                "success");
+        }
+
+        function showTroubleshooting(data) {
+            pendingId = data.pending_id;
+            document.getElementById("troubleshoot-summary").textContent =
+                "We understood your issue as: " + data.summary + " These quick steps might fix it before we send it to IT.";
+            stepsList.replaceChildren();
+            data.steps.forEach(function (step) {
+                const item = document.createElement("li");
+                item.textContent = step;
+                stepsList.appendChild(item);
+            });
+            troubleshootBox.style.display = "block";
+            button.disabled = true;
+        }
+
+        function hideTroubleshooting() {
+            troubleshootBox.style.display = "none";
+            pendingId = null;
+            button.disabled = false;
+        }
 
         form.addEventListener("submit", async function (event) {
             event.preventDefault();
@@ -252,6 +356,8 @@
             button.disabled = true;
             resultBox.style.display = "none";
             resultBox.className = "";
+            hideTroubleshooting();
+            button.disabled = true;
 
             const ticketData = {
                 ticket_title: document.getElementById("ticket_title").value,
@@ -271,25 +377,61 @@
 
                 const data = await response.json();
 
+                if (response.ok && data.status === "troubleshoot") {
+                    showTroubleshooting(data);   // ticket not sent yet
+                    return;
+                }
                 if (!response.ok || data.status !== "success") {
                     throw new Error(data.reason || "Could not submit the support request.");
                 }
 
                 form.reset();
-                resultBox.textContent =
-                    `Request ${data.ticket.ticket_id} submitted (${data.ticket.priority}, ` +
-                    `routed to ${data.ticket.department}). Our IT team will be in touch.`;
-                resultBox.className = "success";
-                resultBox.style.display = "block";
+                showSubmitted(data);
+                button.disabled = false;
             } catch (error) {
-                resultBox.textContent = `Error: ${error.message}`;
-                resultBox.className = "error";
-                resultBox.style.display = "block";
+                showResult(`Error: ${error.message}`, "error");
+                button.disabled = false;
             } finally {
                 button.textContent = "Submit Support Request";
-                button.disabled = false;
             }
         });
+
+        // The user says whether the steps worked: fixed -> cancel, not fixed -> send to IT.
+        async function answerTroubleshooting(resolved) {
+            solvedButton.disabled = true;
+            unsolvedButton.disabled = true;
+            try {
+                const response = await fetch("/api/tickets/troubleshoot-result", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ pending_id: pendingId, resolved: resolved })
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.reason || "Could not complete your request.");
+                }
+
+                hideTroubleshooting();
+                form.reset();
+                if (data.status === "cancelled") {
+                    showResult("Glad that fixed it! Your request has been cancelled and nothing was sent to IT.", "success");
+                } else {
+                    showSubmitted(data);
+                }
+            } catch (error) {
+                hideTroubleshooting();
+                showResult(`Error: ${error.message}`, "error");
+            } finally {
+                solvedButton.disabled = false;
+                unsolvedButton.disabled = false;
+            }
+        }
+
+        solvedButton.addEventListener("click", function () { answerTroubleshooting(true); });
+        unsolvedButton.addEventListener("click", function () { answerTroubleshooting(false); });
     </script>
 </body>
 </html>

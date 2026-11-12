@@ -1,6 +1,5 @@
-# Continuous Integration: runs the offline test suite on every push and pull
-# request. Tests run INSIDE the project's Docker image, so CI checks exactly
-# what the assessor will run. No API key is needed: the tests fake Gemini.
+# ci so it runs offline tests on every push n pull req.
+#no api key needed, tests fake Gemini
 name: Tests
 
 on:
@@ -8,7 +7,7 @@ on:
     branches: ["**"]
   pull_request:
     branches: [main]
-  workflow_dispatch:   # adds a "Run workflow" button on the Actions tab
+  workflow_dispatch:   
 
 jobs:
   test:

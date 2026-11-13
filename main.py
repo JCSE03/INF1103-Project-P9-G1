@@ -45,6 +45,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def run_tests(live: bool = False) -> None:
     # test_ai is imported first: it supplies a dummy API key when none is set.
     import test_ai
+    import test_ai_summary
+    import test_analytics
     import test_data_manager
     import test_io_manager
     import test_logic_manager
@@ -55,7 +57,8 @@ def run_tests(live: bool = False) -> None:
         sys.exit(f"Offline test FAILED: {error!r}")
 
     failures = (test_logic_manager.run_all_tests() + test_data_manager.run_all_tests()
-                + test_io_manager.run_all_tests())
+                + test_io_manager.run_all_tests() + test_analytics.run_all_tests()
+                + test_ai_summary.run_all_tests())
     if failures:
         sys.exit(f"{failures} test(s) FAILED")
 

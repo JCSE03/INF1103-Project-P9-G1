@@ -7,6 +7,8 @@ from threading import Lock, Timer
 from flask import Flask, Response, jsonify, render_template, request
 
 import ai_manager
+import ai_summary
+import analytics
 import data_manager
 import logic_manager
 
@@ -142,6 +144,52 @@ def queue() -> RouteResult:
         records = data_manager.find_records(records, "department", department)
 
     return jsonify({"status": "success", "tickets": logic_manager.sort_queue(records)})
+
+
+@app.route("/analytics")
+def analytics_page() -> str:
+    """Charts and statistics for IT managers."""
+    return render_template("analytics.html", departments=logic_manager.DEPARTMENTS)
+
+
+# Asks the AI for a short summary of the analytics. One shared instance, so its
+# cache and its request limit apply to every visitor.
+_summarizer = ai_summary.ReportSummarizer.with_gemini()
+
+
+def _report_for_request() -> tuple[dict | None, tuple[Response, int] | None]:
+    """The analytics report for ?department= (all departments by default), as
+    (report, None), or (None, error_response) if the request or the data is bad."""
+    department = request.args.get("department")
+    if department and department not in logic_manager.DEPARTMENTS:
+        return None, _error("Unknown department.", 400)
+
+    with _data_lock:
+        records = data_manager.load_records()
+    if records is None:
+        return None, _error("Ticket data file could not be read.", 503)
+
+    if department:
+        records = data_manager.find_records(records, "department", department)
+    return analytics.AnalyticsReport().build(records), None
+
+
+@app.route("/api/analytics")
+def analytics_report() -> RouteResult:
+    report, error = _report_for_request()
+    return error or jsonify({"status": "success", "report": report})
+
+
+@app.route("/api/analytics/summary", methods=["POST"])
+def analytics_summary() -> RouteResult:
+    """An AI-written summary of the same report. POST, because it costs an AI request."""
+    report, error = _report_for_request()
+    if error:
+        return error
+
+    result = _summarizer.summarize(report, user_id=request.remote_addr or "anonymous")
+    code = 200 if result.status == "no_data" else STATUS_CODES.get(result.status, 500)
+    return jsonify(result.to_dict()), code
 
 
 @app.route("/helpdesk")

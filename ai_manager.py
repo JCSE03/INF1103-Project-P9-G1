@@ -7,18 +7,20 @@ AIProvider -> ResponseParser -> ResponseValidator -> ClassificationResult.
 The module-level functions at the bottom are a TEMPORARY compatibility layer
 for io_manager.py and the existing tests; new code should use AIManager.
 """
-from logging.handlers import RotatingFileHandler
+
 import hashlib
 import json
 import logging
 import os
 import re
+import threading
 import time
 import unicodedata
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from collections.abc import Sequence
 from dataclasses import dataclass
+from logging.handlers import RotatingFileHandler
 from typing import Any
 
 from dotenv import load_dotenv
@@ -197,22 +199,28 @@ class ClassificationResult:
 
 # --- AI provider: interface + Gemini implementation -------------------------
 
+@dataclass(frozen=True)
+class ProviderReply:
+    """One provider call: the model's raw text, or the error details
+    ({"code", "fatal", "wait"}) if it failed. Returned per call, so threads
+    handling different tickets never share or overwrite each other's errors."""
+    text: str | None = None
+    error: dict | None = None
+
+
 class AIProvider(ABC):
     """Interface for anything that can answer a prompt. AIManager depends only
     on this, so the model can be swapped (or faked in tests)."""
 
     @abstractmethod
-    def generate(self, prompt: str) -> str | None:
-        """The model's raw text, or None if the call failed."""
-
-    @property
-    @abstractmethod
-    def last_error(self) -> dict | None:
-        """{"code", "fatal", "wait"} of the latest failure, else None."""
+    def generate(self, prompt: str) -> ProviderReply:
+        """Never raises: a failed call comes back as ProviderReply.error."""
 
 
 class GeminiProvider(AIProvider):
-    """Calls Google Gemini; every API failure is logged and recorded, not raised."""
+    """Calls Google Gemini; every API failure is logged and returned in the
+    reply, not raised. Keeps no per-call state, so it is safe to share
+    between threads."""
 
     def __init__(self, client: Any, model: str, system_instruction: str,
                  key_hint: str = "") -> None:
@@ -220,14 +228,8 @@ class GeminiProvider(AIProvider):
         self._model = model
         self._system_instruction = system_instruction
         self._key_hint = key_hint  # last characters of the key, for logs only
-        self._last_error: dict | None = None
 
-    @property
-    def last_error(self) -> dict | None:
-        return self._last_error
-
-    def generate(self, prompt: str) -> str | None:
-        self._last_error = None
+    def generate(self, prompt: str) -> ProviderReply:
         try:
             response = self._client.models.generate_content(
                 model=self._model,
@@ -238,10 +240,9 @@ class GeminiProvider(AIProvider):
                     response_mime_type="application/json",
                 ),
             )
-            return response.text
+            return ProviderReply(text=response.text)
         except Exception as error:
-            self._last_error = self._record_failure(error)
-            return None
+            return ProviderReply(error=self._record_failure(error))
 
     @staticmethod
     def quota_info(error_text: str) -> tuple[bool, float | None]:
@@ -308,23 +309,46 @@ class InputSanitizer:
         return self.sanitize(record) if isinstance(record, str) else ""
 
 
-class SensitiveDataRedactor:
-    """Removes sensitive data for privacy, just before the API call."""
+class RedactionRule:
+    """One kind of sensitive data: a pattern and what replaces it."""
 
-    _REDACTIONS = [
-        (re.compile(r"\b(password|passcode|passphrase|pin)\b(\s*(?:is|:|=)\s*)\S+",
-                    re.I), r"\1\2[REDACTED]"),
-        (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), "[EMAIL]"),
-        (re.compile(r"\b[STFGM]\d{7}[A-Z]\b", re.I), "[ID_NUMBER]"),  # NRIC / FIN
-        (re.compile(r"\b(?:\d[ -]?){12,18}\d\b"), "[CARD_NUMBER]"),
-        (re.compile(r"\b\d{9,}\b"), "[NUMBER]"),  # account numbers etc.
-    ]
+    def __init__(self, pattern: str, replacement: str, flags: int = 0) -> None:
+        self._pattern = re.compile(pattern, flags)
+        self._replacement = replacement
+
+    def apply(self, text: str) -> tuple[str, int]:
+        """Returns (text_with_replacements, number_of_replacements)."""
+        return self._pattern.subn(self._replacement, text)
+
+
+class SensitiveDataRedactor:
+    """Removes sensitive data for privacy, just before the API call. The rules
+    are passed in, so a new kind of data needs no change to this class.
+    Names are not covered: they cannot be found reliably with patterns."""
+
+    def __init__(self, rules: Sequence[RedactionRule] | None = None) -> None:
+        self._rules = list(rules) if rules is not None else self.default_rules()
+
+    @staticmethod
+    def default_rules() -> list[RedactionRule]:
+        # Order matters: specific patterns first, the catch-all [NUMBER] last.
+        octet = r"(?:25[0-5]|2[0-4]\d|1?\d?\d)"
+        return [
+            RedactionRule(r"\b(password|passcode|passphrase|pin)\b(\s*(?:is|:|=)\s*)\S+",
+                          r"\1\2[REDACTED]", re.I),
+            RedactionRule(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", "[EMAIL]"),
+            RedactionRule(r"\b[STFGM]\d{7}[A-Z]\b", "[ID_NUMBER]", re.I),  # NRIC / FIN
+            RedactionRule(r"\b(?:\d[ -]?){12,18}\d\b", "[CARD_NUMBER]"),
+            RedactionRule(r"(?<!\w)(?:\+65[ -]?)?[3689]\d{3}[ -]?\d{4}\b", "[PHONE]"),
+            RedactionRule(rf"\b(?:{octet}\.){{3}}{octet}\b", "[IP_ADDRESS]"),
+            RedactionRule(r"\b\d{9,}\b", "[NUMBER]"),  # account numbers etc.
+        ]
 
     def redact(self, text: str) -> tuple[str, int]:
         """Returns (redacted_text, number_of_redactions)."""
         total = 0
-        for pattern, replacement in self._REDACTIONS:
-            text, count = pattern.subn(replacement, text)
+        for rule in self._rules:
+            text, count = rule.apply(text)
             total += count
         return text, total
 
@@ -443,7 +467,10 @@ class SecurityChecker:
 # --- supporting services ----------------------------------------------------
 
 class RateLimiter:
-    """Per-user sliding-window limiter (in memory)."""
+    """Per-user sliding-window limiter (in memory, thread-safe)."""
+
+    # One lock for every limiter, so limiters sharing a history stay safe too.
+    _lock = threading.Lock()
 
     def __init__(self, max_requests: int = RATE_LIMIT_MAX_REQUESTS,
                  window_seconds: float = RATE_LIMIT_WINDOW_SECONDS,
@@ -452,39 +479,47 @@ class RateLimiter:
         self._window_seconds = window_seconds
         # user_id -> deque of request times; may be shared between limiters
         self._times = history if history is not None else defaultdict(deque)
+        self._last_sweep = float("-inf")
 
     def allow(self, user_id: str, now: float | None = None) -> bool:
         """False when the user is over the limit."""
         now = time.time() if now is None else now
-        window = self._times[user_id]
-        while window and now - window[0] > self._window_seconds:
-            window.popleft()
-        if len(window) >= self._max_requests:
-            return False
-        window.append(now)
-        return True
+        with self._lock:
+            self._forget_idle_users(now)
+            window = self._times[user_id]
+            while window and now - window[0] > self._window_seconds:
+                window.popleft()
+            if len(window) >= self._max_requests:
+                return False
+            window.append(now)
+            return True
+
+    def _forget_idle_users(self, now: float) -> None:
+        """Drops users whose requests have all expired, so memory does not
+        grow with every new user. Runs at most once per window."""
+        if now - self._last_sweep < self._window_seconds:
+            return
+        self._last_sweep = now
+        idle = [user for user, times in self._times.items()
+                if not times or now - times[-1] > self._window_seconds]
+        for user in idle:
+            del self._times[user]
 
 
 class AuditLogger:
-    """Writes security events to security_audit.log with rotation: 
-    only the text's length and a short hash, never the text itself.
-    """
+    """Writes security events to security_audit.log (rotated so it cannot grow
+    forever): only the text's length and a short hash, never the text itself."""
 
     def __init__(self, name: str = "security_audit",
                  filename: str = "security_audit.log",
-                 max_bytes: int = 5 * 1024 * 1024,  # 5 MB per file
-                 backup_count: int = 3) -> None:      # Keep 3 backup files
+                 max_bytes: int = 1_000_000, backups: int = 3) -> None:
         self._logger = logging.getLogger(name)
         self._logger.setLevel(logging.INFO)
         self._logger.propagate = False
         if not self._logger.handlers:
             try:
-                # Use RotatingFileHandler instead of FileHandler
                 handler = RotatingFileHandler(
-                    filename, 
-                    maxBytes=max_bytes, 
-                    backupCount=backup_count
-                )
+                    filename, maxBytes=max_bytes, backupCount=backups)
                 handler.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
                 self._logger.addHandler(handler)
             except OSError:
@@ -649,7 +684,8 @@ class AIManager:
                       description: str) -> ClassificationResult:
         last_error = None
         for attempt in range(max_retries):
-            parsed = self._parser.parse(self._provider.generate(prompt))
+            reply = self._provider.generate(prompt)
+            parsed = self._parser.parse(reply.text)
             if self._validator.is_valid(parsed):
                 data = self._validator.extract(parsed)
                 data["summary"] = self._sanitizer.sanitize(
@@ -659,7 +695,7 @@ class AIManager:
                     flag_reason=verdict.reason if verdict.is_flagged else None)
 
             logging.error(f"Attempt {attempt + 1} failed (API error or bad reply).")
-            last_error = self._provider.last_error
+            last_error = reply.error
             if last_error and last_error["fatal"]:
                 break  # daily quota gone / no quota: retrying cannot help
             if attempt < max_retries - 1:
@@ -678,7 +714,7 @@ class AIManager:
 _audit = AuditLogger()
 audit_log = _audit.logger
 _request_times = defaultdict(deque)  # shared with the limiter built per call
-_last_api_error = None  # details of the latest call_api failure
+_last_api_error = None  # only used by call_api and test fakes
 
 
 # stateless helpers: plain aliases to the class methods
@@ -700,27 +736,34 @@ def allow_request(user_id: str, now: float | None = None) -> bool:
                        _request_times).allow(user_id, now)
 
 
+def _gemini() -> GeminiProvider:
+    return GeminiProvider(client, MODEL_NAME, SYSTEM_INSTRUCTION,
+                          key_hint=api_key[-4:])
+
+
 def call_api(prompt: str) -> str | None:
+    """Text-only wrapper kept for old callers; reports failures through
+    _last_api_error."""
     global _last_api_error
-    provider = GeminiProvider(client, MODEL_NAME, SYSTEM_INSTRUCTION,
-                              key_hint=api_key[-4:])
-    text = provider.generate(prompt)
-    _last_api_error = provider.last_error
-    return text
+    reply = _gemini().generate(prompt)
+    _last_api_error = reply.error
+    return reply.text
+
+
+_real_call_api = call_api
 
 
 class _CallApiProvider(AIProvider):
     """Adapter so AIManager uses the module-level call_api (looked up at call
     time, so tests can replace it)."""
 
-    def generate(self, prompt: str) -> str | None:
+    def generate(self, prompt: str) -> ProviderReply:
         global _last_api_error
-        _last_api_error = None
-        return call_api(prompt)
-
-    @property
-    def last_error(self) -> dict | None:
-        return _last_api_error
+        if call_api is _real_call_api:  # normal run: no shared error state
+            return _gemini().generate(prompt)
+        _last_api_error = None  # a replaced call_api reports errors via the global
+        text = call_api(prompt)
+        return ProviderReply(text, _last_api_error)
 
 
 def classify_ticket(record: dict | str | None, max_retries: int = 2,

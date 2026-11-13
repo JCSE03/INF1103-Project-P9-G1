@@ -29,7 +29,8 @@ import ai_manager
 from ai_manager import (  # the classes (tested in section 1b)
     AIManager, AIProvider, AuditLogger, ClassificationResult,
     CredentialDisclosureRule, GeminiProvider, InputSanitizer,
-    PrivilegedMentionRule, PromptBuilder, PromptInjectionRule, RateLimiter,
+    PrivilegedMentionRule, PromptBuilder, PromptInjectionRule, ProviderReply,
+    RateLimiter,
     ResponseParser, ResponseValidator, RetryPolicy, SecurityChecker,
     SecurityRule, SecurityVerdict, SensitiveDataRedactor, UnrelatedContentRule,
 )
@@ -355,38 +356,28 @@ def test_audit_log():
 
 class FakeProvider(AIProvider):
     """Test double for the AIProvider interface. Each generate() returns the
-    next reply (the last repeats) and records the prompt in .prompts; a dict
-    reply simulates an API failure with those error details."""
+    next reply (the last repeats) as a ProviderReply and records the prompt in
+    .prompts; a dict reply simulates an API failure with those error details."""
 
     def __init__(self, *replies):
         self._replies = replies
-        self._last_error = None
         self.prompts = []
 
     def generate(self, prompt):
         self.prompts.append(prompt)
         reply = self._replies[min(len(self.prompts), len(self._replies)) - 1]
         if isinstance(reply, dict):
-            self._last_error = reply
-            return None
-        self._last_error = None
-        return reply
-
-    @property
-    def last_error(self):
-        return self._last_error
+            return ProviderReply(error=reply)
+        return ProviderReply(text=reply)
 
 
 class FixedProvider(AIProvider):
     """A second, different AIProvider: always answers network / low."""
 
     def generate(self, prompt):
-        return json.dumps(dict(GOOD, category="network", severity="low",
-                               summary="Wi-Fi keeps dropping."))
-
-    @property
-    def last_error(self):
-        return None
+        return ProviderReply(text=json.dumps(dict(
+            GOOD, category="network", severity="low",
+            summary="Wi-Fi keeps dropping.")))
 
 
 class RecordingAudit(AuditLogger):
@@ -436,9 +427,8 @@ def test_class_abstract_contracts():
     assert_not_instantiable(AIProvider)
     assert_not_instantiable(SecurityRule)
 
-    class Incomplete(AIProvider):  # forgets last_error
-        def generate(self, prompt):
-            return None
+    class Incomplete(AIProvider):  # forgets generate
+        pass
     assert_not_instantiable(Incomplete)
 
     assert issubclass(GeminiProvider, AIProvider)
@@ -605,10 +595,10 @@ def test_class_gemini_provider():
         return SimpleNamespace(text='{"a": 1}')
 
     provider = make_gemini(answer)
-    assert provider.generate("hello") == '{"a": 1}' and provider.last_error is None
+    assert provider.generate("hello") == ProviderReply(text='{"a": 1}')
     assert calls[0]["model"] == "test-model" and calls[0]["contents"] == "hello"
 
-    # failures never raise: they return None and record the details; the
+    # failures never raise: they come back as ProviderReply.error; the
     # error message may echo the ticket, so it must not be logged
     cases = [
         (api_error("RateLimitError", 429, "RESOURCE_EXHAUSTED",
@@ -628,13 +618,13 @@ def test_class_gemini_provider():
 
         provider = make_gemini(fail)
         with patch.object(logging, "error") as logged:
-            assert provider.generate("prompt") is None
+            reply = provider.generate("prompt")
         log = " ".join(call.args[0] for call in logged.call_args_list)
-        assert provider.last_error == expected, (provider.last_error, expected)
+        assert reply == ProviderReply(error=expected), (reply, expected)
         assert "secret-ticket-text" not in log, log
         assert "model=test-model" in log and "key=...abcd" in log, log
 
-    # the error is cleared by the next successful call
+    # each reply stands alone: an error is not carried into the next call
     outcomes = [api_error("ServerError", 503, "UNAVAILABLE", "x"),
                 SimpleNamespace(text="fine")]
 
@@ -646,9 +636,8 @@ def test_class_gemini_provider():
 
     provider = make_gemini(flaky)
     with patch.object(logging, "error"):
-        assert provider.generate("prompt") is None
-    assert provider.last_error["code"] == 503
-    assert provider.generate("prompt") == "fine" and provider.last_error is None
+        assert provider.generate("prompt").error["code"] == 503
+    assert provider.generate("prompt") == ProviderReply(text="fine")
 
 
 def test_class_gemini_quota_info():

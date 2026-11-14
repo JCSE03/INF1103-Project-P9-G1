@@ -5,13 +5,16 @@ Run:  python -m unittest test_data_manager   or   python main.py --test
 """
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from unittest.mock import patch
 
 import data_manager
 from data_manager import (DataReadError, DataSaveError, JsonTicketRepository,
-                          StorageError, TicketRepository)
+                          RepositoryFactory, SqliteTicketRepository, StorageError,
+                          TicketRepository)
 
 
 def make_ticket(number: int, department: str = "Infra") -> dict:
@@ -19,12 +22,15 @@ def make_ticket(number: int, department: str = "Infra") -> dict:
             "is_resolved": False, "resolved_at": None}
 
 
-class JsonTicketRepositoryTests(unittest.TestCase):
+class TempFolderTest(unittest.TestCase):
+    """Gives each test an empty temporary folder."""
+
     def setUp(self) -> None:
         self._temp = tempfile.TemporaryDirectory()
-        self.path = os.path.join(self._temp.name, "data", "tickets.json")
-        self.sample_path = os.path.join(self._temp.name, "sampleTickets.json")
-        self.repository = JsonTicketRepository(self.path, self.sample_path)
+        self.folder = self._temp.name
+        self.sample_path = os.path.join(self.folder, "sampleTickets.json")
+        self.json_path = os.path.join(self.folder, "data", "tickets.json")
+        self.db_path = os.path.join(self.folder, "data", "tickets.db")
 
     def tearDown(self) -> None:
         self._temp.cleanup()
@@ -33,6 +39,81 @@ class JsonTicketRepositoryTests(unittest.TestCase):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as file:
             file.write(content if isinstance(content, str) else json.dumps(content))
+
+
+class RepositoryContractTests:
+    """Mixed into a TestCase whose setUp builds self.repository."""
+
+    repository: TicketRepository
+
+    def make_repository(self) -> TicketRepository:
+        raise NotImplementedError
+
+    def test_contract_new_store_starts_from_sample(self):
+        self.write(self.sample_path, [make_ticket(1), make_ticket(2)])
+        ids = [ticket["ticket_id"] for ticket in self.repository.load_all()]
+        self.assertEqual(ids, ["T-0001", "T-0002"])
+
+    def test_contract_no_sample_gives_empty_store(self):
+        self.assertEqual(self.repository.load_all(), [])
+
+    def test_contract_added_ticket_survives_restart(self):
+        self.repository.add(make_ticket(1))
+        self.assertEqual(self.make_repository().load_all(), [make_ticket(1)])
+
+    def test_contract_add_keeps_existing_tickets(self):
+        self.write(self.sample_path, [make_ticket(1)])
+        self.repository.add(make_ticket(2))
+        self.assertEqual(len(self.repository.load_all()), 2)
+
+    def test_contract_get(self):
+        self.write(self.sample_path, [make_ticket(1, "HR"), make_ticket(2)])
+        self.assertEqual(self.repository.get("T-0001")["department"], "HR")
+        self.assertIsNone(self.repository.get("T-9999"))
+
+    def test_contract_find_by_department(self):
+        self.write(self.sample_path, [make_ticket(1, "Cyber"), make_ticket(2, "HR"),
+                                      make_ticket(3, "Cyber")])
+        found = self.repository.find("department", "Cyber")
+        self.assertEqual([ticket["ticket_id"] for ticket in found], ["T-0001", "T-0003"])
+
+    def test_contract_find_by_other_field(self):
+        self.write(self.sample_path, [make_ticket(1), {**make_ticket(2), "is_resolved": True}])
+        found = self.repository.find("is_resolved", True)
+        self.assertEqual([ticket["ticket_id"] for ticket in found], ["T-0002"])
+
+    def test_contract_resolve_then_reopen(self):
+        self.write(self.sample_path, [make_ticket(1)])
+        self.assertTrue(self.repository.set_resolution("T-0001", True, "2026-02-01T10:00:00+00:00"))
+        ticket = self.make_repository().get("T-0001")
+        self.assertEqual((ticket["is_resolved"], ticket["resolved_at"]),
+                         (True, "2026-02-01T10:00:00+00:00"))
+        self.assertTrue(self.repository.set_resolution("T-0001", False, "ignored"))
+        ticket = self.make_repository().get("T-0001")
+        self.assertEqual((ticket["is_resolved"], ticket["resolved_at"]), (False, None))
+
+    def test_contract_resolve_unknown_ticket(self):
+        self.assertFalse(self.repository.set_resolution("T-9999", True, "now"))
+
+    def test_contract_delete(self):
+        self.write(self.sample_path, [make_ticket(1), make_ticket(2)])
+        self.assertTrue(self.repository.delete("T-0001"))
+        self.assertFalse(self.repository.delete("T-0001"))
+        ids = [ticket["ticket_id"] for ticket in self.make_repository().load_all()]
+        self.assertEqual(ids, ["T-0002"])
+
+    def test_contract_is_a_ticket_repository(self):
+        self.assertIsInstance(self.repository, TicketRepository)
+
+
+class JsonTicketRepositoryTests(RepositoryContractTests, TempFolderTest):
+    def setUp(self) -> None:
+        super().setUp()
+        self.path = self.json_path
+        self.repository = self.make_repository()
+
+    def make_repository(self) -> JsonTicketRepository:
+        return JsonTicketRepository(self.path, self.sample_path)
 
     def read_store(self) -> str:
         with open(self.path, encoding="utf-8") as file:
@@ -173,9 +254,6 @@ class JsonTicketRepositoryTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             TicketRepository()
 
-    def test_json_repository_is_a_ticket_repository(self):
-        self.assertIsInstance(self.repository, TicketRepository)
-
     def test_path_is_read_only(self):
         with self.assertRaises(AttributeError):
             self.repository.path = "somewhere/else.json"
@@ -185,59 +263,145 @@ class JsonTicketRepositoryTests(unittest.TestCase):
         self.assertTrue(issubclass(DataSaveError, StorageError))
 
 
-class CompatibilityLayerTests(unittest.TestCase):
-    """The temporary Phase 1 functions keep their old return values."""
+class SqliteTicketRepositoryTests(RepositoryContractTests, TempFolderTest):
+    def setUp(self) -> None:
+        super().setUp()
+        self.repository = self.make_repository()
+
+    def make_repository(self) -> SqliteTicketRepository:
+        return SqliteTicketRepository(self.db_path, self.sample_path, self.json_path)
+
+    def test_new_database_takes_existing_json_tickets(self):
+        self.write(self.sample_path, [make_ticket(1)])
+        self.write(self.json_path, [make_ticket(7), make_ticket(8)])
+        ids = [ticket["ticket_id"] for ticket in self.repository.load_all()]
+        self.assertEqual(ids, ["T-0007", "T-0008"])  # not the samples
+
+    def test_starting_tickets_are_loaded_only_once(self):
+        self.write(self.sample_path, [make_ticket(1)])
+        self.repository.delete("T-0001")
+        self.assertEqual(self.make_repository().load_all(), [])
+
+    def test_broken_starting_files_give_empty_store(self):
+        self.write(self.json_path, "{ not json")
+        self.write(self.sample_path, "{ not json")
+        self.assertEqual(self.repository.load_all(), [])
+
+    def test_duplicate_ticket_id_raises_save_error(self):
+        self.repository.add(make_ticket(1))
+        with self.assertRaises(DataSaveError):
+            self.repository.add(make_ticket(1))
+        self.assertEqual(len(self.repository.load_all()), 1)
+
+    def test_corrupt_database_raises_and_is_never_written(self):
+        self.write(self.db_path, "this is not a database" * 100)
+        with open(self.db_path, "rb") as file:
+            before = file.read()
+        with self.assertRaises(DataReadError), self.assertLogs(level="ERROR"):
+            self.repository.load_all()
+        with self.assertRaises(DataReadError), self.assertLogs(level="ERROR"):
+            self.repository.add(make_ticket(1))
+        with open(self.db_path, "rb") as file:
+            self.assertEqual(file.read(), before)
+
+    def test_corrupt_row_raises(self):
+        self.repository.add(make_ticket(1))
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute("UPDATE tickets SET data = '{ broken'")
+        with self.assertRaises(DataReadError):
+            self.repository.load_all()
+
+    def test_locked_database_raises_save_error(self):
+        self.repository.add(make_ticket(1))
+        self.repository._lock_timeout = 0
+        blocker = sqlite3.connect(self.db_path)
+        try:
+            blocker.execute("BEGIN EXCLUSIVE")
+            with self.assertRaises(DataSaveError), self.assertLogs(level="ERROR"):
+                self.repository.add(make_ticket(2))
+        finally:
+            blocker.close()
+        self.assertEqual(len(self.repository.load_all()), 1)  # rolled back
+
+
+class RepositoryFactoryTests(TempFolderTest):
+    def test_json_is_the_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertIsInstance(RepositoryFactory.create(), JsonTicketRepository)
+
+    def test_setting_selects_sqlite(self):
+        with patch.dict(os.environ, {"HTPRS_STORAGE": " SQLite "}):
+            self.assertIsInstance(RepositoryFactory.create(), SqliteTicketRepository)
+
+    def test_unknown_storage_raises(self):
+        with self.assertRaises(ValueError):
+            RepositoryFactory.create("excel")
+
+    def test_options_are_passed_on(self):
+        repository = RepositoryFactory.create("sqlite", path=self.db_path)
+        self.assertEqual(repository.path, self.db_path)
+
+
+class CompatibilityLayerTests:
+    """Mixed into a TempFolderTest: the temporary Phase 1 functions keep their
+    old return values, for whichever storage HTPRS_STORAGE names."""
+
+    storage = "json"
 
     def setUp(self) -> None:
-        self._temp = tempfile.TemporaryDirectory()
-        folder = self._temp.name
-        self.path = os.path.join(folder, "data", "tickets.json")
-        patches = [patch("data_manager.DATA_FILE", self.path),
-                   patch("data_manager.SAMPLE_FILE", os.path.join(folder, "none.json"))]
-        for active in patches:
+        super().setUp()
+        for active in (patch("data_manager.DATA_FILE", self.json_path),
+                       patch("data_manager.DATABASE_FILE", self.db_path),
+                       patch("data_manager.SAMPLE_FILE", self.sample_path),
+                       patch.dict(os.environ, {"HTPRS_STORAGE": self.storage})):
             active.start()
             self.addCleanup(active.stop)
-
-    def tearDown(self) -> None:
-        self._temp.cleanup()
 
     def test_load_missing_gives_empty_list(self):
         self.assertEqual(data_manager.load_records(), [])
 
-    def test_load_corrupt_gives_none(self):
-        os.makedirs(os.path.dirname(self.path))
-        with open(self.path, "w", encoding="utf-8") as file:
-            file.write("[{ broken")
-        self.assertIsNone(data_manager.load_records())
-
-    def test_add_and_find(self):
+    def test_add_find_and_resolve(self):
         records = []
         self.assertTrue(data_manager.add_record(records, make_ticket(1, "Cyber")))
-        self.assertEqual(data_manager.find_records(data_manager.load_records(),
-                                                   "department", "Cyber"), [make_ticket(1, "Cyber")])
+        self.assertEqual(records, [make_ticket(1, "Cyber")])
+        stored = data_manager.load_records()
+        self.assertEqual(data_manager.find_records(stored, "department", "Cyber"),
+                         [make_ticket(1, "Cyber")])
+        self.assertEqual(data_manager.set_resolution(stored, "T-0001", True, "now"), "updated")
+        self.assertEqual(stored[0]["resolved_at"], "now")
+        self.assertEqual(data_manager.set_resolution(stored, "T-9999", True, "now"), "not_found")
 
-    def test_failed_add_returns_false_and_undoes(self):
+
+class JsonCompatibilityTests(CompatibilityLayerTests, TempFolderTest):
+    def test_load_corrupt_gives_none(self):
+        self.write(self.json_path, "[{ broken")
+        self.assertIsNone(data_manager.load_records())
+
+    def test_failed_saves_return_false_and_save_failed(self):
         records = [make_ticket(1)]
+        self.write(self.json_path, records)
         with patch("data_manager.os.replace", side_effect=OSError("disk full")), \
                 self.assertLogs(level="ERROR"):
             self.assertFalse(data_manager.add_record(records, make_ticket(2)))
-        self.assertEqual(records, [make_ticket(1)])
+            self.assertEqual(data_manager.set_resolution(records, "T-0001", True), "save_failed")
+        self.assertEqual(records, [make_ticket(1)])  # caller's list unchanged
 
-    def test_set_resolution_statuses(self):
-        records = [make_ticket(1)]
-        self.assertEqual(data_manager.set_resolution(records, "T-0001", True, "now"), "updated")
-        self.assertEqual(data_manager.set_resolution(records, "T-9999", True, "now"), "not_found")
-        with patch("data_manager.os.replace", side_effect=OSError("disk full")), \
-                self.assertLogs(level="ERROR"):
-            self.assertEqual(data_manager.set_resolution(records, "T-0001", False), "save_failed")
-        self.assertEqual((records[0]["is_resolved"], records[0]["resolved_at"]), (True, "now"))
+
+class SqliteCompatibilityTests(CompatibilityLayerTests, TempFolderTest):
+    storage = "sqlite"
+
+    def test_tickets_go_to_the_database(self):
+        data_manager.add_record([], make_ticket(1))
+        self.assertTrue(os.path.exists(self.db_path))
+        self.assertFalse(os.path.exists(self.json_path))
 
 
 def run_all_tests() -> int:
     """Runs every test here and returns the number of failures (for main.py)."""
     suite = unittest.TestSuite(
         unittest.defaultTestLoader.loadTestsFromTestCase(case)
-        for case in (JsonTicketRepositoryTests, CompatibilityLayerTests))
+        for case in (JsonTicketRepositoryTests, SqliteTicketRepositoryTests,
+                     RepositoryFactoryTests, JsonCompatibilityTests, SqliteCompatibilityTests))
     result = unittest.TextTestRunner(verbosity=1).run(suite)
     return len(result.failures) + len(result.errors)
 

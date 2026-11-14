@@ -19,6 +19,7 @@ Usage:
     python main.py --demo           dummy output: real pipeline, fake Gemini
 """
 
+import os
 import argparse
 import sys
 
@@ -50,6 +51,7 @@ def run_tests(live: bool = False) -> None:
     import test_data_manager
     import test_io_manager
     import test_logic_manager
+    os.environ["HTPRS_STORAGE"] = "json"
 
     try:
         test_ai.run_offline_tests()

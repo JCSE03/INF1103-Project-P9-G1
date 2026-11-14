@@ -16,7 +16,6 @@ from unittest.mock import patch
 os.environ.setdefault("GEMINI_API_KEY", "offline-test-key")
 
 import ai_manager  # noqa: E402
-import io_manager  # noqa: E402
 from ai_manager import (  # noqa: E402
     AIProvider, AuditLogger, ProviderReply, RateLimiter, RetryPolicy,
 )
@@ -229,15 +228,16 @@ def test_the_provider_can_be_swapped_and_gemini_is_wired_in():
 # ---------- the route ----------
 
 @contextmanager
-def summarizer_in_route(*replies, **options):
+def summarizer_in_route(client, *replies, **options):
+    """Swap the web app's summarizer for one with a fake provider."""
     summarizer, provider, _ = make(*replies, **options)
-    with patch.object(io_manager, "_summarizer", summarizer):
+    with patch.object(client.manager, "summarizer", summarizer):
         yield provider
 
 
 def test_route_returns_a_summary_and_sends_no_ticket_text():
     records = [SECRET, ticket(is_resolved=True)]
-    with data_file(records) as client, summarizer_in_route(GOOD_REPLY) as provider:
+    with data_file(records) as client, summarizer_in_route(client, GOOD_REPLY) as provider:
         response = client.post("/api/analytics/summary")
         assert response.status_code == 200
         assert response.get_json() == {"status": "success", "cached": False, "summary": GOOD}
@@ -252,13 +252,13 @@ def test_route_returns_a_summary_and_sends_no_ticket_text():
 
 def test_route_status_codes():
     with data_file([ticket()]) as client:
-        with summarizer_in_route(GOOD_REPLY, limiter=RateLimiter(0, 60)):
+        with summarizer_in_route(client, GOOD_REPLY, limiter=RateLimiter(0, 60)):
             response = client.post("/api/analytics/summary")
             assert response.status_code == 429 and response.get_json()["status"] == "rate_limited"
-        with summarizer_in_route(ERR_503):
+        with summarizer_in_route(client, ERR_503):
             response = client.post("/api/analytics/summary")
             assert response.status_code == 503 and response.get_json()["status"] == "error"
-    with data_file("{broken") as client, summarizer_in_route(GOOD_REPLY) as provider:
+    with data_file("{broken") as client, summarizer_in_route(client, GOOD_REPLY) as provider:
         assert client.post("/api/analytics/summary").status_code == 503
         assert provider.prompts == []
 

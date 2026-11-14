@@ -56,14 +56,17 @@ def resolved(hours, priority="P3", start="2026-10-12T01:00:00+00:00"):
 
 @contextmanager
 def data_file(content):
-    """A Flask test client whose tickets.json is a temporary file."""
+    """A Flask test client whose tickets.json is a temporary file.
+    client.manager is the FlaskIOManager behind it, so tests can swap its parts."""
     with tempfile.TemporaryDirectory() as folder:
         path = os.path.join(folder, "tickets.json")
         with open(path, "w", encoding="utf-8") as file:
             file.write(content if isinstance(content, str) else json.dumps(content))
-        with patch.object(data_manager, "DATA_FILE", path), \
-                patch.object(data_manager, "SAMPLE_FILE", os.path.join(folder, "none.json")):
-            yield io_manager.app.test_client()
+        repository = data_manager.JsonTicketRepository(path, os.path.join(folder, "none.json"))
+        manager = io_manager.FlaskIOManager(repository=repository, auto_open=False)
+        client = manager.app.test_client()
+        client.manager = manager
+        yield client
 
 
 # ---------- the metrics ----------

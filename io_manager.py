@@ -8,9 +8,11 @@ from flask import Flask, Response, jsonify, render_template, request
 
 import ai_manager
 import ai_summary
+import ai_troubleshooting
 import analytics
 import data_manager
 import logic_manager
+import pending_tickets
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +34,12 @@ _data_lock = Lock()
 
 # The different returns of the Flask
 RouteResult = str | Response | tuple[Response, int]
+
+# Self-service: writes troubleshooting steps for low-urgency Infra tickets, and
+# holds those tickets (not saved) while the requester tries the steps.
+# Both are used only through their abstract types.
+_advisor: ai_troubleshoot.TicketAdvisor = ai_troubleshooting.TroubleshootingAdvisor.with_gemini()
+_pending: pending_tickets.PendingTicketStore = pending_tickets.InMemoryPendingTickets()
 
 
 def _error(reason: str, code: int) -> tuple[Response, int]:
@@ -102,7 +110,33 @@ def submit_ticket() -> RouteResult:
 
     decision = logic_manager.process_ticket(result)
 
-    
+    # Low-urgency Infra tickets: offer AI troubleshooting steps first. The
+    # ticket is held, not saved, until the requester says the steps did not help.
+    if logic_manager.offers_self_service(decision):
+        steps = _advisor.advise(decision["category"], decision["summary"],
+                                ticket_text, user_id=user_id)
+        if steps.is_success:
+            token = _pending.hold({"requester": requester, "decision": decision})
+            print_message(f"Held {decision['priority']} -> {decision['department']} "
+                          "ticket: troubleshooting steps shown, not saved yet.")
+            return jsonify({"status": "troubleshooting", "pending_id": token,
+                            "troubleshooting": steps.to_dict(),
+                            "manual_review": False}), 200
+        # The steps are only a convenience: if the AI cannot write them, fall
+        # through and save the ticket as normal rather than leave it unsent.
+        print_message(f"Troubleshooting unavailable ({steps.status}); saving the ticket.")
+
+    saved = _save_ticket(requester, decision)
+    if isinstance(saved, tuple):
+        return saved  # an error response
+    result["ticket"] = saved
+    result["manual_review"] = bool(result.get("manual_review") or saved["needs_review"])
+    return jsonify(result), 200
+
+
+def _save_ticket(requester: dict, decision: dict) -> dict | tuple[Response, int]:
+    """Saves one processed ticket to tickets.json. Returns the saved ticket, or
+    an error response (a tuple) if it could not be saved."""
     with _data_lock:
         records = data_manager.load_records()
         if records is None:
@@ -123,10 +157,32 @@ def submit_ticket() -> RouteResult:
             return _error("The ticket could not be saved. Please try again.", 503)
 
     print_message(f"Saved {ticket['ticket_id']}: {ticket['priority']} -> {ticket['department']}")
+    return ticket
 
-    result["ticket"] = ticket
-    result["manual_review"] = bool(result.get("manual_review") or ticket["needs_review"])
-    return jsonify(result), 200
+
+@app.route("/api/pending-tickets/<pending_id>/answer", methods=["POST"])
+def answer_troubleshooting(pending_id: str) -> RouteResult:
+    """The requester's answer to "did the steps fix it?". Send {"solved": true}
+    to drop the held ticket, or {"solved": false} to save it for the IT team."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("solved"), bool):
+        return _error('Send {"solved": true} or {"solved": false}.', 400)
+
+    held = _pending.take(pending_id)
+    if held is None:
+        return _error("This request has expired or was already answered. "
+                      "Please submit it again if you still need help.", 410)
+
+    if data["solved"]:
+        print_message("Troubleshooting solved the issue; the ticket was dropped, not saved.")
+        return jsonify({"status": "closed"})
+
+    saved = _save_ticket(held["requester"], held["decision"])
+    if isinstance(saved, tuple):
+        _pending.put_back(pending_id, held)  # let the requester try again
+        return saved
+    return jsonify({"status": "success", "ticket": saved,
+                    "manual_review": bool(saved["needs_review"])})
 
 
 @app.route("/queue")

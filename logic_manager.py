@@ -203,6 +203,78 @@ class TicketDecision:
         }
 
 
+class SelfServiceRule(ABC):
+    """One condition a ticket must meet to be offered self-service. The base
+    class holds what every rule shares (a description and allows()); each
+    subclass says WHEN its condition is met."""
+
+    def __init__(self, description: str) -> None:
+        self._description = description
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    def allows(self, decision: dict) -> bool:
+        """decision is the dict from TicketDecision.to_dict()."""
+        return self._is_met(decision)
+
+    @abstractmethod
+    def _is_met(self, decision: dict) -> bool:
+        ...
+
+
+class DepartmentRule(SelfServiceRule):
+
+    def __init__(self, departments: tuple[str, ...]) -> None:
+        super().__init__(f"Department is one of {', '.join(departments)}")
+        self._departments = tuple(departments)
+
+    def _is_met(self, decision: dict) -> bool:
+        return decision.get("department") in self._departments
+
+
+class PriorityLevelRule(SelfServiceRule):
+
+    def __init__(self, priorities: tuple[str, ...]) -> None:
+        super().__init__(f"Priority is one of {', '.join(priorities)}")
+        self._priorities = tuple(priorities)
+
+    def _is_met(self, decision: dict) -> bool:
+        return decision.get("priority") in self._priorities
+
+
+class NoReviewNeededRule(SelfServiceRule):
+    """Generic steps are not safe or reliable when the AI is unsure or a
+    privileged account is involved, so those tickets go to a human."""
+
+    def __init__(self) -> None:
+        super().__init__("Ticket does not need human review")
+
+    def _is_met(self, decision: dict) -> bool:
+        return not decision.get("needs_review")
+
+
+class SelfServicePolicy:
+    """Decides which tickets are first offered AI troubleshooting steps; if the
+    requester fixes the problem, the ticket is never saved. A ticket qualifies
+    when EVERY rule allows it. The policy never asks which kind of rule it
+    runs, so a new rule needs no change here.
+
+    By default: Infra tickets at P4 or P5 that do not need review."""
+
+    def __init__(self, rules: list[SelfServiceRule] | None = None) -> None:
+        self._rules = list(rules) if rules is not None else self.default_rules()
+
+    @staticmethod
+    def default_rules() -> list[SelfServiceRule]:
+        return [DepartmentRule(("Infra",)), PriorityLevelRule(("P4", "P5")),
+                NoReviewNeededRule()]
+
+    def applies_to(self, decision: dict) -> bool:
+        return all(rule.allows(decision) for rule in self._rules)
+
+
 class TicketQueue:
 
     UNKNOWN_PRIORITY_NUMBER = 99
@@ -222,7 +294,11 @@ class LogicManager:
     def __init__(self, rubric: ScoringRubric | None = None,
                  router: Router | None = None,
                  priority_rules: list[PriorityRule] | None = None,
-                 review_rules: list[ReviewRule] | None = None) -> None:
+                 review_rules: list[ReviewRule] | None = None,
+                 self_service: SelfServicePolicy | None = None) -> None:
+        # Aggregation: the policy is passed in and exists independently.
+        self._self_service = (self_service if self_service is not None
+                              else SelfServicePolicy())
         self._rubric = rubric if rubric is not None else ScoringRubric()
         self._router = router if router is not None else Router()
         self._priority_rules = (list(priority_rules) if priority_rules is not None
@@ -255,6 +331,9 @@ class LogicManager:
             review_reasons=reasons,
         )
 
+    def offers_self_service(self, decision: dict) -> bool:
+        return self._self_service.applies_to(decision)
+
     def sort_queue(self, tickets: list[dict]) -> list[dict]:
         return self._queue.sort(tickets)
 
@@ -265,6 +344,10 @@ DEPARTMENTS = _default_manager.departments
 
 def process_ticket(ai_result: dict) -> dict:
     return _default_manager.process(ai_result).to_dict()
+
+
+def offers_self_service(decision: dict) -> bool:
+    return _default_manager.offers_self_service(decision)
 
 
 def sort_queue(tickets: list[dict]) -> list[dict]:

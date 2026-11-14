@@ -14,8 +14,9 @@ Our IT helpdesk routing system:
 6. Calculates a priority score from a fixed scoring rubric and assigns a priority level from P1 (most urgent) to P5 (least urgent), with security incidents affecting multiple users always raised to P1.
 7. Routes the ticket to the correct department: Cyber, HR, Finance or Infra.
 8. Flags the ticket for human review when the AI is unsure (confidence below 60%) or a privileged account is involved.
-9. Saves the processed ticket to a JSON file, storing only the AI's summary and never the user's raw description.
-10. Shows a helpdesk dashboard with each department's queue, most urgent first, where staff mark tickets resolved or reopen them.
+9. For low-urgency Infra tickets (P4 or P5), asks the AI for safe troubleshooting steps and shows them to the requester first. If the requester says it is fixed, the ticket is dropped and never saved. If not, it is saved and sent on as normal. Tickets that need human review are never held back, and if the AI cannot write steps the ticket is simply saved.
+10. Saves the processed ticket to a JSON file, storing only the AI's summary and never the user's raw description.
+11. Shows a helpdesk dashboard with each department's queue, most urgent first, where staff mark tickets resolved or reopen them.
 
 ## Project Structure
 
@@ -24,7 +25,9 @@ Our IT helpdesk routing system:
 | `main.py` | Entry point: starts the web app, runs the tests or the demo |
 | `io_manager.py` | Web routes, form validation and all console output |
 | `ai_manager.py` | Security checks, redaction, Gemini call, response validation |
-| `logic_manager.py` | Priority score, P1-P5, department routing, review flag, queue order |
+| `logic_manager.py` | Priority score, P1-P5, department routing, review flag, queue order, self-service rule (which tickets get troubleshooting first) |
+| `ai_troubleshoot.py` | AI troubleshooting steps for low-urgency Infra tickets (validated, no links) |
+| `pending_tickets.py` | Holds a ticket in memory while the requester tries the steps |
 | `data_manager.py` | Saves and loads `data/tickets.json`, query and resolve functions |
 | `index.html` | Ticket submission form |
 | `helpdesk.html` | Helpdesk dashboard (queues, resolve / reopen) |

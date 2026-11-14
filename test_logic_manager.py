@@ -303,6 +303,76 @@ def test_compat_layer_matches_the_classes():
     assert lm.DEPARTMENTS == ["Cyber", "HR", "Finance", "Infra"]
 
 
+def decision_for(category, severity, scope="individual", confidence=0.9, flagged=False):
+    return manager.process(make_ai_result(category, severity, scope, confidence, flagged)).to_dict()
+
+
+def test_self_service_for_low_urgency_infra_tickets():
+    p5 = decision_for("hardware", "low")        # score 10 -> P5
+    p4 = decision_for("network", "medium")      # score 25 -> P4
+    assert (p5["priority"], p5["department"]) == ("P5", "Infra")
+    assert (p4["priority"], p4["department"]) == ("P4", "Infra")
+    assert manager.offers_self_service(p5) and manager.offers_self_service(p4)
+    assert lm.offers_self_service(p5)           # module-level function too
+
+
+def test_no_self_service_for_urgent_infra_tickets():
+    p3 = decision_for("software", "high")       # score 40 -> P3
+    p1 = decision_for("network", "critical", "organisation")
+    assert p3["priority"] == "P3" and p1["priority"] == "P1"
+    assert not manager.offers_self_service(p3)
+    assert not manager.offers_self_service(p1)
+
+
+def test_no_self_service_for_other_departments():
+    for category in ("hr", "finance", "cybersecurity"):
+        low = decision_for(category, "low")
+        assert low["priority"] == "P5" and low["department"] != "Infra", category
+        assert not manager.offers_self_service(low), category
+
+
+def test_no_self_service_when_review_is_needed():
+    unsure = decision_for("hardware", "low", confidence=0.3)
+    flagged = decision_for("account_access", "low", flagged=True)
+    for decision in (unsure, flagged):
+        assert decision["priority"] == "P5" and decision["department"] == "Infra"
+        assert decision["needs_review"] and not manager.offers_self_service(decision)
+
+
+def test_self_service_policy_can_be_configured():
+    unsure = decision_for("hardware", "low", confidence=0.3)
+    relaxed = lm.SelfServicePolicy([lm.DepartmentRule(("Infra",)),
+                                    lm.PriorityLevelRule(("P5",))])     # no review rule
+    assert relaxed.applies_to(unsure)
+    assert not relaxed.applies_to(decision_for("network", "medium"))   # P4 not allowed here
+    hr_only = lm.LogicManager(self_service=lm.SelfServicePolicy(
+        [lm.DepartmentRule(("HR",)), lm.PriorityLevelRule(("P5",))]))
+    assert not hr_only.offers_self_service(decision_for("hardware", "low"))
+    assert hr_only.offers_self_service(decision_for("hr", "low"))
+
+
+def test_self_service_rules_share_one_base_class():
+    rules = lm.SelfServicePolicy.default_rules()
+    assert all(isinstance(rule, lm.SelfServiceRule) for rule in rules)
+    assert {type(rule) for rule in rules} == {lm.DepartmentRule, lm.PriorityLevelRule,
+                                              lm.NoReviewNeededRule}
+    assert all(rule.description for rule in rules)
+    assert raises(TypeError, lm.SelfServiceRule, "abstract")
+
+
+def test_a_new_self_service_rule_needs_no_change_to_the_policy():
+    class OnlyHighConfidence(lm.SelfServiceRule):
+        def __init__(self):
+            super().__init__("AI is very sure")
+
+        def _is_met(self, decision):
+            return decision["confidence_score"] >= 0.95
+
+    policy = lm.SelfServicePolicy(lm.SelfServicePolicy.default_rules() + [OnlyHighConfidence()])
+    assert not policy.applies_to(decision_for("hardware", "low", confidence=0.9))
+    assert policy.applies_to(decision_for("hardware", "low", confidence=0.97))
+
+
 def run_all_tests():
     tests = [(name, f) for name, f in sorted(globals().items())
              if name.startswith("test_") and callable(f)]

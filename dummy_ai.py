@@ -18,7 +18,6 @@ from unittest.mock import patch
 os.environ.setdefault("GEMINI_API_KEY", "offline-demo-key")
 
 import ai_manager  # noqa: E402
-import io_manager  # noqa: E402
 import logic_manager  # noqa: E402
 import test_ai  # noqa: E402  (reuses its sample tickets and comparison)
 
@@ -54,7 +53,7 @@ def fake_call_api(prompt: str) -> str:
 
 
 def run_demo() -> bool:
-    say = io_manager.print_message
+    say = print
     say("Running DUMMY AI Manager demo (fake Gemini, real pipeline)...")
 
     ai_manager._request_times.clear()

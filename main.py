@@ -9,7 +9,6 @@ Usage:
     python main.py --demo           dummy output: real pipeline, fake Gemini
 """
 
-import os
 import argparse
 import sys
 
@@ -59,12 +58,13 @@ class HelpdeskApplication:
     def run_tests(self) -> None:
         # test_ai is imported first: it supplies a dummy API key when none is set.
         import test_ai
+        import test_ai_summary
+        import test_analytics
         import test_data_manager
         import test_io_manager
         import test_logic_manager
 
-        # Tests point tickets.json at temporary files; never use the .env storage setting.
-        os.environ["HTPRS_STORAGE"] = "json"
+
 
         try:
             test_ai.run_offline_tests()
@@ -75,6 +75,8 @@ class HelpdeskApplication:
             test_logic_manager.run_all_tests()
             + test_data_manager.run_all_tests()
             + test_io_manager.run_all_tests()
+            + test_analytics.run_all_tests()
+            + test_ai_summary.run_all_tests()
         )
         if failures:
             sys.exit(f"{failures} test(s) FAILED")

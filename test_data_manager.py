@@ -1,5 +1,5 @@
 """Offline tests for data_manager. Every test works in its own temporary
-folder, so the real data/tickets.json is never touched.
+folder, so the real data/tickets.json and data/tickets.db are never touched.
 
 Run:  python -m unittest test_data_manager   or   python main.py --test
 """
@@ -342,66 +342,12 @@ class RepositoryFactoryTests(TempFolderTest):
         self.assertEqual(repository.path, self.db_path)
 
 
-class CompatibilityLayerTests:
-    """Mixed into a TempFolderTest: the temporary Phase 1 functions keep their
-    old return values, for whichever storage HTPRS_STORAGE names."""
-
-    storage = "json"
-
-    def setUp(self) -> None:
-        super().setUp()
-        for active in (patch("data_manager.DATA_FILE", self.json_path),
-                       patch("data_manager.DATABASE_FILE", self.db_path),
-                       patch("data_manager.SAMPLE_FILE", self.sample_path),
-                       patch.dict(os.environ, {"HTPRS_STORAGE": self.storage})):
-            active.start()
-            self.addCleanup(active.stop)
-
-    def test_load_missing_gives_empty_list(self):
-        self.assertEqual(data_manager.load_records(), [])
-
-    def test_add_find_and_resolve(self):
-        records = []
-        self.assertTrue(data_manager.add_record(records, make_ticket(1, "Cyber")))
-        self.assertEqual(records, [make_ticket(1, "Cyber")])
-        stored = data_manager.load_records()
-        self.assertEqual(data_manager.find_records(stored, "department", "Cyber"),
-                         [make_ticket(1, "Cyber")])
-        self.assertEqual(data_manager.set_resolution(stored, "T-0001", True, "now"), "updated")
-        self.assertEqual(stored[0]["resolved_at"], "now")
-        self.assertEqual(data_manager.set_resolution(stored, "T-9999", True, "now"), "not_found")
-
-
-class JsonCompatibilityTests(CompatibilityLayerTests, TempFolderTest):
-    def test_load_corrupt_gives_none(self):
-        self.write(self.json_path, "[{ broken")
-        self.assertIsNone(data_manager.load_records())
-
-    def test_failed_saves_return_false_and_save_failed(self):
-        records = [make_ticket(1)]
-        self.write(self.json_path, records)
-        with patch("data_manager.os.replace", side_effect=OSError("disk full")), \
-                self.assertLogs(level="ERROR"):
-            self.assertFalse(data_manager.add_record(records, make_ticket(2)))
-            self.assertEqual(data_manager.set_resolution(records, "T-0001", True), "save_failed")
-        self.assertEqual(records, [make_ticket(1)])  # caller's list unchanged
-
-
-class SqliteCompatibilityTests(CompatibilityLayerTests, TempFolderTest):
-    storage = "sqlite"
-
-    def test_tickets_go_to_the_database(self):
-        data_manager.add_record([], make_ticket(1))
-        self.assertTrue(os.path.exists(self.db_path))
-        self.assertFalse(os.path.exists(self.json_path))
-
-
 def run_all_tests() -> int:
     """Runs every test here and returns the number of failures (for main.py)."""
     suite = unittest.TestSuite(
         unittest.defaultTestLoader.loadTestsFromTestCase(case)
         for case in (JsonTicketRepositoryTests, SqliteTicketRepositoryTests,
-                     RepositoryFactoryTests, JsonCompatibilityTests, SqliteCompatibilityTests))
+                     RepositoryFactoryTests))
     result = unittest.TextTestRunner(verbosity=1).run(suite)
     return len(result.failures) + len(result.errors)
 

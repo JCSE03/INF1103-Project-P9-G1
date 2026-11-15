@@ -21,7 +21,7 @@ from ai_manager import (
 from data_manager import (
     DataReadError,
     DataSaveError,
-    JsonTicketRepository,
+    RepositoryFactory,
     TicketRepository,
 )
 from logic_manager import LogicManager
@@ -151,7 +151,8 @@ class FlaskIOManager(BaseIOManager):
         )
         self.ai_manager: AIManager = ai_mgr or AIManager(provider)
         self.logic_manager: LogicManager = logic_mgr or LogicManager()
-        self.repository: TicketRepository = repository or JsonTicketRepository()
+        self.repository: TicketRepository = repository or RepositoryFactory.create()
+
 
         self._register_routes()
 
@@ -204,7 +205,7 @@ class FlaskIOManager(BaseIOManager):
                 }
                 self.repository.add(ticket)
             except DataReadError:
-                self.notify("tickets.json is unreadable; ticket was NOT saved.")
+                self.notify("ticket data is unreadable; ticket was NOT saved.")
                 return self.format_error(
                     "Ticket data file could not be read, so the ticket was not saved.", 503
                 )

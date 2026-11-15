@@ -23,3 +23,30 @@ jobs:
 
       - name: Run the offline tests inside the container
         run: docker run --rm htprs python main.py --test
+
+  # CD:when main passes the tests then publish dokcer img to github
+  # container registry (ghcr.io) so anyone can pull and run the latest build
+  publish:
+    needs: test                 # only runs if the tests passed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write          
+
+    env:
+      IMAGE: ghcr.io/jcse03/inf1103-project-p9-g1
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v5
+
+      - name: Log in to the GitHub container registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build the Docker image
+        run: docker build -t $IMAGE:latest -t $IMAGE:${{ github.sha }} .
+
+      - name: Publish the image
+        run: docker push --all-tags $IMAGE

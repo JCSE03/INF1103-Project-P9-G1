@@ -26,7 +26,7 @@ Our IT helpdesk routing system:
 | `io_manager.py` | Web routes, form validation and all console output |
 | `ai_manager.py` | Security checks, redaction, Gemini call, response validation |
 | `logic_manager.py` | Priority score, P1-P5, department routing, review flag, queue order, self-service rule (which tickets get troubleshooting first) |
-| `ai_troubleshoot.py` | AI troubleshooting steps for low-urgency Infra tickets (validated, no links) |
+| `ai_troubleshooting.py` | AI troubleshooting steps for low-urgency Infra tickets (validated, no links) |
 | `pending_tickets.py` | Holds a ticket in memory while the requester tries the steps |
 | `data_manager.py` | Saves and loads `data/tickets.json`, query and resolve functions |
 | `index.html` | Ticket submission form |

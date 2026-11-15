@@ -15,16 +15,16 @@ from unittest.mock import patch
 # io_manager imports ai_manager, which refuses to load without a key.
 os.environ.setdefault("GEMINI_API_KEY", "offline-test-key")
 
-import ai_manager  # noqa: E402
-import data_manager  # noqa: E402
-import io_manager  # noqa: E402
-from ai_manager import AIProvider, AuditLogger, ProviderReply, RateLimiter, RetryPolicy  # noqa: E402
-from ai_troubleshooting import (  # noqa: E402
+import ai_manager  
+import data_manager  
+import io_manager  
+from ai_manager import AIProvider, AuditLogger, ProviderReply, RateLimiter, RetryPolicy  
+from ai_troubleshooting import (  
     TicketAdvisor, TroubleshootingAdvisor, TroubleshootingResult, TroubleshootingValidator,
 )
-from pending_tickets import InMemoryPendingTickets, PendingTicketStore  # noqa: E402
-from test_io_manager import FORM, fake_app  # noqa: E402
-from data_manager import DataSaveError  # noqa: E402
+from pending_tickets import InMemoryPendingTickets, PendingTicketStore  
+from test_io_manager import FORM, fake_app  
+from data_manager import DataSaveError  
 
 GOOD = {"intro": "These quick checks often help.",
         "steps": ["Restart the app.", "Restart your computer.", "Check your Wi-Fi."]}

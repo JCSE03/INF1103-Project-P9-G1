@@ -19,7 +19,7 @@ import ai_manager  # noqa: E402
 import data_manager  # noqa: E402
 import io_manager  # noqa: E402
 from ai_manager import AIProvider, AuditLogger, ProviderReply, RateLimiter, RetryPolicy  # noqa: E402
-from ai_troubleshoot import (  # noqa: E402
+from ai_troubleshooting import (  # noqa: E402
     TicketAdvisor, TroubleshootingAdvisor, TroubleshootingResult, TroubleshootingValidator,
 )
 from pending_tickets import InMemoryPendingTickets, PendingTicketStore  # noqa: E402

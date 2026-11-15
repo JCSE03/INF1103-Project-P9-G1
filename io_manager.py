@@ -18,10 +18,12 @@ from ai_manager import (
     api_key,
     client,
 )
+from ai_summary import ReportSummarizer
+from analytics import AnalyticsReport
 from data_manager import (
     DataReadError,
     DataSaveError,
-    JsonTicketRepository,
+    RepositoryFactory,
     TicketRepository,
 )
 from logic_manager import LogicManager
@@ -134,6 +136,7 @@ class FlaskIOManager(BaseIOManager):
         auto_open: bool = True,
         ticket_validator: InputValidator | None = None,
         resolution_validator: InputValidator | None = None,
+        summarizer: ReportSummarizer | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -151,7 +154,9 @@ class FlaskIOManager(BaseIOManager):
         )
         self.ai_manager: AIManager = ai_mgr or AIManager(provider)
         self.logic_manager: LogicManager = logic_mgr or LogicManager()
-        self.repository: TicketRepository = repository or JsonTicketRepository()
+        self.repository: TicketRepository = repository or RepositoryFactory.create()
+        # One shared summarizer, so its cache and request limit apply to every visitor.
+        self.summarizer: ReportSummarizer = summarizer or ReportSummarizer.with_gemini()
 
         self._register_routes()
 
@@ -164,6 +169,13 @@ class FlaskIOManager(BaseIOManager):
         self.app.add_url_rule(
             "/api/tickets/<ticket_id>/toggle-resolution",
             view_func=self.toggle_resolution,
+            methods=["POST"],
+        )
+        self.app.add_url_rule("/analytics", view_func=self.analytics_page, methods=["GET"])
+        self.app.add_url_rule("/api/analytics", view_func=self.analytics_report, methods=["GET"])
+        self.app.add_url_rule(
+            "/api/analytics/summary",
+            view_func=self.analytics_summary,
             methods=["POST"],
         )
 
@@ -204,12 +216,12 @@ class FlaskIOManager(BaseIOManager):
                 }
                 self.repository.add(ticket)
             except DataReadError:
-                self.notify("tickets.json is unreadable; ticket was NOT saved.")
+                self.notify("Ticket data is unreadable; ticket was NOT saved.")
                 return self.format_error(
-                    "Ticket data file could not be read, so the ticket was not saved.", 503
+                    "Ticket data could not be read, so the ticket was not saved.", 503
                 )
             except DataSaveError:
-                self.notify("Could not write tickets.json; ticket was NOT saved.")
+                self.notify("Could not save ticket data; ticket was NOT saved.")
                 return self.format_error("The ticket could not be saved. Please try again.", 503)
 
         self.notify(f"Saved {ticket['ticket_id']}: {ticket['priority']} -> {ticket['department']}")
@@ -231,7 +243,7 @@ class FlaskIOManager(BaseIOManager):
                     else self.repository.load_all()
                 )
             except DataReadError:
-                return self.format_error("Ticket data file could not be read.", 503)
+                return self.format_error("Ticket data could not be read.", 503)
 
         return jsonify({"status": "success", "tickets": self.logic_manager.sort_queue(records)})
 
@@ -252,6 +264,42 @@ class FlaskIOManager(BaseIOManager):
             departments=self.logic_manager.departments,
         )
 
+    def analytics_page(self) -> str:
+        """Charts and statistics for IT managers."""
+        return render_template("analytics.html", departments=self.logic_manager.departments)
+
+    def _report_for_request(self) -> tuple[dict | None, tuple[Response, int] | None]:
+        """The analytics report for ?department= (all departments by default), as
+        (report, None), or (None, error_response) if the request or the data is bad."""
+        department = request.args.get("department")
+        if department and department not in self.logic_manager.departments:
+            return None, self.format_error("Unknown department.", 400)
+
+        with self._data_lock:
+            try:
+                records = (
+                    self.repository.find("department", department)
+                    if department
+                    else self.repository.load_all()
+                )
+            except DataReadError:
+                return None, self.format_error("Ticket data could not be read.", 503)
+        return AnalyticsReport().build(records), None
+
+    def analytics_report(self) -> RouteResult:
+        report, error = self._report_for_request()
+        return error or jsonify({"status": "success", "report": report})
+
+    def analytics_summary(self) -> RouteResult:
+        """An AI-written summary of the same report. POST, because it costs an AI request."""
+        report, error = self._report_for_request()
+        if error:
+            return error
+
+        result = self.summarizer.summarize(report, user_id=request.remote_addr or "anonymous")
+        code = 200 if result.status == "no_data" else self.STATUS_CODES.get(result.status, 500)
+        return jsonify(result.to_dict()), code
+
     def toggle_resolution(self, ticket_id: str) -> RouteResult:
         raw_data = request.get_json(silent=True)
 
@@ -271,7 +319,7 @@ class FlaskIOManager(BaseIOManager):
                 updated = self.repository.set_resolution(ticket_id, is_resolved, resolved_at)
             except DataReadError:
                 return self.format_error(
-                    "Ticket data file could not be read, so nothing was changed.", 503
+                    "Ticket data could not be read, so nothing was changed.", 503
                 )
             except DataSaveError:
                 return self.format_error("The change could not be saved. Please try again.", 503)

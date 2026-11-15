@@ -55,27 +55,31 @@ class HelpdeskApplication:
         )
         return parser.parse_args(argv)
 
-
-def run_tests(live: bool = False) -> None:
-    # test_ai is imported first: it supplies a dummy API key when none is set.
-    import test_ai
-    import test_ai_summary
-    import test_analytics
-    import test_data_manager
-    import test_io_manager
-    import test_logic_manager
-    import test_self_service
+    def run_tests(self) -> None:
+        # test_ai is imported first: it supplies a dummy API key when none is set.
+        import test_ai
+        import test_ai_summary
+        import test_analytics
+        import test_data_manager
+        import test_io_manager
+        import test_logic_manager
+        import test_self_service
 
         try:
             test_ai.run_offline_tests()
         except AssertionError as error:
             sys.exit(f"Offline test FAILED: {error!r}")
 
-    failures = (test_logic_manager.run_all_tests() + test_data_manager.run_all_tests()
-                + test_io_manager.run_all_tests() + test_analytics.run_all_tests()
-                + test_ai_summary.run_all_tests())
-    if failures:
-        sys.exit(f"{failures} test(s) FAILED")
+        failures = (
+            test_logic_manager.run_all_tests()
+            + test_data_manager.run_all_tests()
+            + test_io_manager.run_all_tests()
+            + test_analytics.run_all_tests()
+            + test_ai_summary.run_all_tests()
+            + test_self_service.run_all_tests()
+        )
+        if failures:
+            sys.exit(f"{failures} test(s) FAILED")
 
         if self.args.live:
             test_ai.run_live_check()

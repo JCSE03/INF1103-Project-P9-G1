@@ -23,7 +23,8 @@ from ai_troubleshoot import (  # noqa: E402
     TicketAdvisor, TroubleshootingAdvisor, TroubleshootingResult, TroubleshootingValidator,
 )
 from pending_tickets import InMemoryPendingTickets, PendingTicketStore  # noqa: E402
-from test_io_manager import FORM, fake_app, stop  # noqa: E402
+from test_io_manager import FORM, fake_app  # noqa: E402
+from data_manager import DataSaveError  # noqa: E402
 
 GOOD = {"intro": "These quick checks often help.",
         "steps": ["Restart the app.", "Restart your computer.", "Check your Wi-Fi."]}
@@ -233,24 +234,22 @@ def test_pending_put_back():
 
 # ---------- routes ----------
 
+SAVED = {"repo": None}
+
+
 @contextmanager
 def self_service_app(classifier_reply, advisor_reply=GOOD_REPLY):
     """The fake app with a fake advisor and an empty pending store.
     Yields (client, classifier prompts, advisor provider)."""
-    client, prompts, patches = fake_app(classifier_reply)
     advisor, provider, _ = advisor_with(advisor_reply)
-    patches += [patch.object(io_manager, "_advisor", advisor),
-                patch.object(io_manager, "_pending", InMemoryPendingTickets())]
-    patches[-2].start()
-    patches[-1].start()
-    try:
-        yield client, prompts, provider
-    finally:
-        stop(patches)
+    client, prompts, repository = fake_app(classifier_reply, advisor=advisor,
+                                           pending=InMemoryPendingTickets())
+    SAVED["repo"] = repository
+    yield client, prompts, provider
 
 
 def saved():
-    return data_manager.load_records()
+    return SAVED["repo"].load_all()
 
 
 def test_low_urgency_infra_ticket_is_held_not_saved():
@@ -331,7 +330,7 @@ def test_save_failure_keeps_the_ticket_for_a_retry():
     with self_service_app(P5_INFRA) as (client, _, _):
         token = client.post("/submit-ticket", json=INFRA_FORM).get_json()["pending_id"]
         url = f"/api/pending-tickets/{token}/answer"
-        with patch.object(data_manager, "add_record", return_value=False):
+        with patch.object(SAVED["repo"], "add", side_effect=DataSaveError("disk")):
             assert client.post(url, json={"solved": False}).status_code == 503
         assert saved() == []
         retry = client.post(url, json={"solved": False})
@@ -366,8 +365,10 @@ def test_abstract_types_cannot_be_created():
 def test_concrete_classes_implement_the_interfaces():
     assert issubclass(TroubleshootingAdvisor, TicketAdvisor)
     assert issubclass(InMemoryPendingTickets, PendingTicketStore)
-    assert isinstance(io_manager._advisor, TicketAdvisor)
-    assert isinstance(io_manager._pending, PendingTicketStore)
+    manager = io_manager.FlaskIOManager(
+        ai_mgr=ai_manager.AIManager(FakeProvider(P5_INFRA)), auto_open=False)
+    assert isinstance(manager.advisor, TicketAdvisor)
+    assert isinstance(manager.pending, PendingTicketStore)
 
 
 class CannedAdvisor(TicketAdvisor):
@@ -395,21 +396,15 @@ class DictStore(PendingTicketStore):
 
 
 def test_routes_work_with_any_advisor_and_any_store():
-    client, _, patches = fake_app(P5_INFRA)
     store = DictStore()
-    patches += [patch.object(io_manager, "_advisor", CannedAdvisor()),
-                patch.object(io_manager, "_pending", store)]
-    patches[-2].start()
-    patches[-1].start()
-    try:
-        body = client.post("/submit-ticket", json=INFRA_FORM).get_json()
-        assert body["troubleshooting"] == {"intro": "Canned.", "steps": ["Step one.", "Step two."]}
-        assert len(store.items) == 1 and saved() == []
-        assert client.post(f"/api/pending-tickets/{body['pending_id']}/answer",
-                           json={"solved": False}).status_code == 200
-        assert len(saved()) == 1 and store.items == {}
-    finally:
-        stop(patches)
+    client, _, repository = fake_app(P5_INFRA, advisor=CannedAdvisor(), pending=store)
+    SAVED["repo"] = repository
+    body = client.post("/submit-ticket", json=INFRA_FORM).get_json()
+    assert body["troubleshooting"] == {"intro": "Canned.", "steps": ["Step one.", "Step two."]}
+    assert len(store.items) == 1 and saved() == []
+    assert client.post(f"/api/pending-tickets/{body['pending_id']}/answer",
+                       json={"solved": False}).status_code == 200
+    assert len(saved()) == 1 and store.items == {}
 
 
 # ---------- test runner ----------

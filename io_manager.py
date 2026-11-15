@@ -8,40 +8,59 @@ from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request
 
-import ai_manager
-import ai_summary
-import analytics
-import data_manager
-import logic_manager
+from ai_manager import (
+    AIManager,
+    GeminiProvider,
+    InputSanitizer,
+    MODEL_NAME,
+    SYSTEM_INSTRUCTION,
+    SensitiveDataRedactor,
+    api_key,
+    client,
+)
+from ai_summary import ReportSummarizer
+from ai_troubleshooting import TicketAdvisor, TroubleshootingAdvisor
+from analytics import AnalyticsReport
+from data_manager import (
+    DataReadError,
+    DataSaveError,
+    RepositoryFactory,
+    TicketRepository,
+)
+from logic_manager import LogicManager
+from pending_tickets import InMemoryPendingTickets, PendingTicketStore
 
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__, template_folder=BASE_DIR)
-
-# HTTP status for each "status" value classify_ticket can return.
-STATUS_CODES = {
-    "success": 200,
-    "invalid": 400,
-    "blocked": 403,
-    "rate_limited": 429,
-    "error": 503,
-}
-
-
-# Prevents race conditions during concurrent write operations to tickets.json
-#like two tickets writing at the same time
-_data_lock = Lock()
-
-# The different returns of the Flask
+# The different returns of the Flask routes
 RouteResult = str | Response | tuple[Response, int]
 
+GONE_REASON = (
+    "This request has expired or was already answered. "
+    "Please submit your request again if you still need help."
+)
 
-def _error(reason: str, code: int) -> tuple[Response, int]:
-    return jsonify({"status": "error", "reason": reason, "manual_review": True}), code
+
+class BaseIOManager(ABC):
+    """Abstract base class for application I/O managers."""
+
+    @staticmethod
+    def notify(message: str) -> None:
+        print(f"[Helpdesk] {message}")
+
+    @staticmethod
+    def format_error(reason: str, code: int) -> tuple[Response, int]:
+        return jsonify({"status": "error", "reason": reason, "manual_review": True}), code
 
     @abstractmethod
     def start(self) -> None:
         """Start the I/O interface."""
+
+
+class InputValidator(ABC):
+    """Abstract base class for payload validators."""
+
+    @abstractmethod
+    def validate(self, payload: Any) -> tuple[dict[str, Any] | None, str | None]:
+        """Validate raw input and return (cleaned_data, error_message)."""
 
 
 class TicketFormValidator(InputValidator):
@@ -102,8 +121,25 @@ class ResolutionPayloadValidator(InputValidator):
         return {"is_resolved": payload["is_resolved"]}, None
 
 
+class AnswerPayloadValidator(InputValidator):
+    """Validates the requester's answer to "did the steps solve it?"."""
+
+    def validate(self, payload: Any) -> tuple[dict[str, Any] | None, str | None]:
+        if not isinstance(payload, dict) or not isinstance(payload.get("solved"), bool):
+            return None, 'Send {"solved": true} or {"solved": false}.'
+        return {"solved": payload["solved"]}, None
+
+
 class FlaskIOManager(BaseIOManager):
     """Web-based I/O manager built on Flask."""
+
+    STATUS_CODES = {
+        "success": 200,
+        "invalid": 400,
+        "blocked": 403,
+        "rate_limited": 429,
+        "error": 503,
+    }
 
     def __init__(
         self,
@@ -116,6 +152,9 @@ class FlaskIOManager(BaseIOManager):
         ticket_validator: InputValidator | None = None,
         resolution_validator: InputValidator | None = None,
         summarizer: ReportSummarizer | None = None,
+        advisor: TicketAdvisor | None = None,
+        pending: PendingTicketStore | None = None,
+        answer_validator: InputValidator | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -127,21 +166,35 @@ class FlaskIOManager(BaseIOManager):
 
         self.ticket_validator: InputValidator = ticket_validator or TicketFormValidator()
         self.resolution_validator: InputValidator = resolution_validator or ResolutionPayloadValidator()
+        self.answer_validator: InputValidator = answer_validator or AnswerPayloadValidator()
 
-        provider = GeminiProvider(
-            client, MODEL_NAME, SYSTEM_INSTRUCTION, key_hint=api_key[-4:]
-        )
-        self.ai_manager: AIManager = ai_mgr or AIManager(provider)
+        if ai_mgr is not None:
+            self.ai_manager = ai_mgr
+        else:
+            provider = GeminiProvider(
+                client, MODEL_NAME, SYSTEM_INSTRUCTION, key_hint=api_key[-4:]
+            )
+            self.ai_manager = AIManager(provider)
+
         self.logic_manager: LogicManager = logic_mgr or LogicManager()
         self.repository: TicketRepository = repository or RepositoryFactory.create()
         # One shared summarizer, so its cache and request limit apply to every visitor.
         self.summarizer: ReportSummarizer = summarizer or ReportSummarizer.with_gemini()
+        # Pre-ticket AI troubleshooting: low-urgency tickets are held here while
+        # the requester tries the steps, and only saved if they did not help.
+        self.advisor: TicketAdvisor = advisor or TroubleshootingAdvisor.with_gemini()
+        self.pending: PendingTicketStore = pending or InMemoryPendingTickets()
 
         self._register_routes()
 
     def _register_routes(self) -> None:
         self.app.add_url_rule("/", view_func=self.home, methods=["GET"])
         self.app.add_url_rule("/submit-ticket", view_func=self.submit_ticket, methods=["POST"])
+        self.app.add_url_rule(
+            "/api/pending-tickets/<token>/answer",
+            view_func=self.answer_troubleshooting,
+            methods=["POST"],
+        )
         self.app.add_url_rule("/queue", view_func=self.queue, methods=["GET"])
         self.app.add_url_rule("/helpdesk", view_func=self.helpdesk, methods=["GET"])
         self.app.add_url_rule("/departments/<department>", view_func=self.department_page, methods=["GET"])
@@ -180,33 +233,96 @@ class FlaskIOManager(BaseIOManager):
         if not classification.is_success:
             return jsonify(result), self.STATUS_CODES.get(result["status"], 500)
 
-    decision = logic_manager.process_ticket(result)
+        decision = self.logic_manager.process(result).to_dict()
+        requester = validated["requester"]
 
-    
-    with _data_lock:
-        records = data_manager.load_records()
-        if records is None:
-            # Abort saving if the file reading fails
-            print_message("tickets.json is unreadable; ticket was NOT saved.")
-            return _error("Ticket data file could not be read, so the ticket was not saved.", 503)
+        # Low-urgency Infra tickets get AI troubleshooting steps first. The
+        # ticket is held (not saved) until the requester says the steps did not
+        # help. If the AI cannot write steps, fall through and save as normal.
+        if self.logic_manager.offers_self_service(decision):
+            advice = self.advisor.advise(
+                decision["category"], decision["summary"],
+                validated["ticket_text"], user_id=user_id,
+            )
+            if advice.is_success:
+                held = {"requester": requester, "decision": decision}
+                token = self.pending.hold(held)
+                self.notify(f"Ticket from {user_id} held for troubleshooting.")
+                return jsonify({
+                    "status": "troubleshooting",
+                    "pending_id": token,
+                    "troubleshooting": advice.to_dict(),
+                    "manual_review": False,
+                }), 200
+            self.notify(f"Troubleshooting unavailable ({advice.status}); saving ticket.")
 
-        ticket = {
-            "ticket_id": f"T-{len(records) + 1:04d}",
-            "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            **requester,
-            **decision,
-            "is_resolved": False,
-            "resolved_at": None,
-        }
-        if not data_manager.add_record(records, ticket):
-            print_message("Could not write tickets.json; ticket was NOT saved.")
-            return _error("The ticket could not be saved. Please try again.", 503)
+        saved, error_response = self._save_ticket(requester, decision)
+        if error_response:
+            return error_response
 
-    print_message(f"Saved {ticket['ticket_id']}: {ticket['priority']} -> {ticket['department']}")
+        result["ticket"] = saved
+        result["manual_review"] = bool(result.get("manual_review") or saved["needs_review"])
+        return jsonify(result), 200
 
-    result["ticket"] = ticket
-    result["manual_review"] = bool(result.get("manual_review") or ticket["needs_review"])
-    return jsonify(result), 200
+    def _save_ticket(
+        self, requester: dict, decision: dict
+    ) -> tuple[dict | None, tuple[Response, int] | None]:
+        """Save a processed ticket. Returns (ticket, None) or (None, error_response)."""
+        with self._data_lock:
+            try:
+                records = self.repository.load_all()
+            except DataReadError:
+                self.notify("tickets.json is unreadable; ticket was NOT saved.")
+                return None, self.format_error(
+                    "Ticket data file could not be read, so the ticket was not saved.", 503
+                )
+
+            ticket = {
+                "ticket_id": f"T-{len(records) + 1:04d}",
+                "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                **requester,
+                **decision,
+                "is_resolved": False,
+                "resolved_at": None,
+            }
+            try:
+                self.repository.add(ticket)
+            except DataSaveError:
+                self.notify("Could not write tickets.json; ticket was NOT saved.")
+                return None, self.format_error(
+                    "The ticket could not be saved. Please try again.", 503
+                )
+
+        self.notify(f"Saved {ticket['ticket_id']}: {ticket['priority']} -> {ticket['department']}")
+        return ticket, None
+
+    def answer_troubleshooting(self, token: str) -> RouteResult:
+        """The requester's answer to the troubleshooting steps: solved drops the
+        held ticket, not solved saves it for the IT team."""
+        validated, error_reason = self.answer_validator.validate(
+            request.get_json(silent=True)
+        )
+        if error_reason or validated is None:
+            return self.format_error(error_reason or "Invalid payload.", 400)
+
+        held = self.pending.take(token)
+        if held is None:
+            return self.format_error(GONE_REASON, 410)
+
+        if validated["solved"]:
+            self.notify("Troubleshooting solved the issue; ticket dropped.")
+            return jsonify({"status": "closed"})
+
+        saved, error_response = self._save_ticket(held["requester"], held["decision"])
+        if error_response:
+            self.pending.put_back(token, held)  # let the requester try again
+            return error_response
+
+        return jsonify({
+            "status": "success",
+            "ticket": saved,
+            "manual_review": bool(saved["needs_review"]),
+        })
 
     def queue(self) -> RouteResult:
         department = request.args.get("department")

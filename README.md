@@ -15,29 +15,34 @@ Our IT helpdesk routing system:
 7. Routes the ticket to the correct department: Cyber, HR, Finance or Infra.
 8. Flags the ticket for human review when the AI is unsure (confidence below 60%) or a privileged account is involved.
 9. For low-urgency Infra tickets (P4 or P5), asks the AI for safe troubleshooting steps and shows them to the requester first. If the requester says it is fixed, the ticket is dropped and never saved. If not, it is saved and sent on as normal. Tickets that need human review are never held back, and if the AI cannot write steps the ticket is simply saved.
-10. Saves the processed ticket to a JSON file, storing only the AI's summary and never the user's raw description.
+10. Saves the processed ticket to a JSON file or a SQLite database (your choice, see Storage), storing only the AI's summary and never the user's raw description.
 11. Shows a helpdesk dashboard with each department's queue, most urgent first, where staff mark tickets resolved or reopen them.
+12. Shows an analytics page for IT managers: tickets per day, by category, priority and department, resolution times, and tickets at risk of missing their target time. The AI can write a short summary of these numbers; it only sees the counts, never ticket text.
 
 ## Project Structure
 
 | File | Role |
 | --- | --- |
 | `main.py` | Entry point: starts the web app, runs the tests or the demo |
-| `io_manager.py` | Web routes, form validation and all console output |
-| `ai_manager.py` | Security checks, redaction, Gemini call, response validation |
+| `io_manager.py` | The Flask web app (`FlaskIOManager`): routes, form validation and all console output |
+| `ai_manager.py` | Security checks, redaction, rate limit, Gemini call, response validation (`AIManager`) |
 | `logic_manager.py` | Priority score, P1-P5, department routing, review flag, queue order, self-service rule (which tickets get troubleshooting first) |
 | `ai_troubleshooting.py` | AI troubleshooting steps for low-urgency Infra tickets (validated, no links) |
 | `pending_tickets.py` | Holds a ticket in memory while the requester tries the steps |
-| `data_manager.py` | Saves and loads `data/tickets.json`, query and resolve functions |
+| `data_manager.py` | Ticket storage behind one interface (`TicketRepository`): a JSON file or a SQLite database, chosen by `RepositoryFactory` |
+| `analytics.py` | The numbers behind the analytics page (one `Metric` class per chart) and the target times per priority |
+| `ai_summary.py` | AI-written summary of the analytics numbers (limited and cached to save quota) |
 | `index.html` | Ticket submission form |
 | `helpdesk.html` | Helpdesk dashboard (queues, resolve / reopen) |
-| `test_*.py` | Offline tests for each manager (no API key needed) |
+| `analytics.html` | Analytics page (charts and AI summary) |
+| `test_*.py` | Offline tests for each part (no API key needed) |
 | `dummy_ai.py` | Demo run of the full pipeline with a fake Gemini |
+| `.github/workflows/tests.yml` | CI/CD: runs the tests on every push, publishes the Docker image from `main` |
 
 ## Setup
 
 1. Clone the repo and pull the latest `main`
-2. Copy the env template: `cp .env.example .env`
+2. Copy the env template: `cp .env.example .env` (in Command Prompt: `copy .env.example .env`)
 3. Get your own Gemini API key from https://aistudio.google.com/apikey (use your own Google account, don't share keys) and paste it into `.env`
 4. Install dependencies: `pip install -r requirements.txt`
 
@@ -60,8 +65,20 @@ Once the app is running:
 - Ticket form: http://localhost:5000
 - Helpdesk dashboard: http://localhost:5000/helpdesk
 - One department's queue: http://localhost:5000/departments/Infra (or Cyber, HR, Finance)
+- Analytics: http://localhost:5000/analytics
 
-Tickets are saved in data/tickets.json, which is gitignored. If the file is missing, it is created from the 19 demo tickets in sampleTickets.json
+## Storage
+
+Tickets are saved in the `data` folder, which is gitignored. `HTPRS_STORAGE` in `.env` chooses how:
+
+| Setting | Where tickets go |
+| --- | --- |
+| `HTPRS_STORAGE=json` (default if not set) | `data/tickets.json` |
+| `HTPRS_STORAGE=sqlite` | `data/tickets.db` |
+
+If there are no tickets yet, the JSON storage starts from the demo tickets in `sampleTickets.json`. The SQLite storage starts from your existing `data/tickets.json` if there is one, otherwise from the same demo tickets. The rest of the app works the same with either setting.
+
+The target time per priority used on the analytics page (P1 4 hours, P2 8, P3 24, P4 72, P5 120) can be changed by adding a `sla_policy.json` file next to `analytics.py`, for example `{"P1": 2}`.
 
 ## Docker
 
@@ -79,13 +96,33 @@ docker run --rm --env-file .env -p 5000:5000 -v "${PWD}/data:/app/data" htprs
 
 The `-v` option keeps tickets in your project's `data` folder, so they survive restarts and are shared with `python main.py`. Without it, the queue starts empty every time. In Command Prompt, use `-v "%cd%/data:/app/data"` instead.
 
+## CI/CD
+
+The workflow in `.github/workflows/tests.yml` runs on GitHub Actions.
+
+| Job | When it runs | What it does |
+| --- | --- | --- |
+| `test` (CI) | Every push to any branch, and every pull request to `main` | Builds the Docker image and runs `python main.py --test` inside it. No API key is needed because the tests use a fake Gemini. |
+| `publish` (CD) | Only on `main`, and only if `test` passed | Builds the image again and publishes it to the GitHub container registry, tagged `latest` and with the commit ID. |
+
+A red cross on a pull request means the tests failed, so fix the branch before merging. On a pull request the `publish` job shows as skipped, which is expected.
+
+To run the latest published image without cloning the repo:
+
+```bash
+docker pull ghcr.io/jcse03/inf1103-project-p9-g1:latest
+docker run --rm -e GEMINI_API_KEY=your-key -p 5000:5000 ghcr.io/jcse03/inf1103-project-p9-g1:latest
+```
+
+If the package is private, run `docker login ghcr.io` with your GitHub username and a personal access token first.
+
 ## Team Workflow
 
 1. Start from an up-to-date `main`: `git checkout main` then `git pull origin main`
 2. Create a branch: `git checkout -b feature/short-description`
 3. Commit small, focused changes with clear messages
 4. Run `python main.py --test` before pushing
-5. Push the branch and open a pull request; merge after a teammate approves
+5. Push the branch and open a pull request; merge after the tests pass on GitHub and a teammate approves
 6. Delete the branch after merging
 
 Don't upload files through the GitHub website: uploads ignore `.gitignore`, so `.env`, `data/` and `__pycache__/` can end up in the repo.

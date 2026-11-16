@@ -165,9 +165,85 @@
             border: 1px solid #f5c2c7;
         }
 
+        #troubleshoot-panel {
+            display: none;
+            padding: 28px 34px 34px;
+        }
+
+        #troubleshoot-panel h2 {
+            margin: 0 0 8px;
+            color: var(--navy);
+            font-size: 20px;
+        }
+
+        #troubleshoot-intro {
+            margin: 0 0 14px;
+            line-height: 1.5;
+        }
+
+        #troubleshoot-steps {
+            margin: 0;
+            padding: 16px 18px 16px 38px;
+            line-height: 1.5;
+            background: #f4f8fb;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+
+        #troubleshoot-steps li + li {
+            margin-top: 8px;
+        }
+
+        .answer-question {
+            margin: 22px 0 0;
+            color: var(--navy);
+            font-weight: bold;
+        }
+
+        .answer-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .answer-buttons button {
+            margin-top: 12px;
+        }
+
+        #answer-error {
+            display: none;
+            margin-top: 16px;
+            padding: 13px 14px;
+            color: var(--error-text);
+            background: var(--error-bg);
+            border: 1px solid #f5c2c7;
+            border-radius: 8px;
+            line-height: 1.45;
+        }
+
+        button.secondary {
+            color: var(--blue);
+            background: white;
+            border: 1px solid var(--blue);
+        }
+
+        button.secondary:hover {
+            background: #eef6fc;
+        }
+
         @media (max-width: 560px) {
             body {
                 padding: 20px 12px;
+            }
+
+            #troubleshoot-panel {
+                padding-right: 22px;
+                padding-left: 22px;
+            }
+
+            .answer-buttons {
+                grid-template-columns: 1fr;
+                gap: 0;
             }
 
             .header,
@@ -238,6 +314,20 @@
 
             <div id="result-box" role="status" aria-live="polite"></div>
         </form>
+
+        <section id="troubleshoot-panel" aria-live="polite">
+            <h2>Try these steps first</h2>
+            <p id="troubleshoot-intro"></p>
+            <ol id="troubleshoot-steps"></ol>
+
+            <p class="answer-question">Did this solve your issue?</p>
+            <div class="answer-buttons">
+                <button type="button" id="solved-yes">Yes, it's solved</button>
+                <button type="button" id="solved-no" class="secondary">No, I still need help</button>
+            </div>
+
+            <div id="answer-error" role="alert"></div>
+        </section>
     </main>
 
     <script>
@@ -271,25 +361,113 @@
 
                 const data = await response.json();
 
+                if (response.ok && data.status === "troubleshooting") {
+                    // A low-urgency IT issue: show self-help steps. The ticket is
+                    // not sent to the IT team unless the user says they did not help.
+                    showTroubleshooting(data);
+                    return;
+                }
+
                 if (!response.ok || data.status !== "success") {
                     throw new Error(data.reason || "Could not submit the support request.");
                 }
 
                 form.reset();
-                resultBox.textContent =
-                    `Request ${data.ticket.ticket_id} submitted (${data.ticket.priority}, ` +
-                    `routed to ${data.ticket.department}). Our IT team will be in touch.`;
-                resultBox.className = "success";
-                resultBox.style.display = "block";
+                showTicketSubmitted(data.ticket);
             } catch (error) {
-                resultBox.textContent = `Error: ${error.message}`;
-                resultBox.className = "error";
-                resultBox.style.display = "block";
+                showResult(`Error: ${error.message}`, "error");
             } finally {
                 button.textContent = "Submit Support Request";
                 button.disabled = false;
             }
         });
+
+        const panel = document.getElementById("troubleshoot-panel");
+        const stepList = document.getElementById("troubleshoot-steps");
+        const answerError = document.getElementById("answer-error");
+        const solvedYes = document.getElementById("solved-yes");
+        const solvedNo = document.getElementById("solved-no");
+        let pendingId = null;
+
+        function showResult(message, kind) {
+            resultBox.textContent = message;
+            resultBox.className = kind;
+            resultBox.style.display = "block";
+        }
+
+        function showTicketSubmitted(ticket) {
+            showResult(
+                `Request ${ticket.ticket_id} submitted (${ticket.priority}, ` +
+                `routed to ${ticket.department}). Our IT team will be in touch.`,
+                "success"
+            );
+        }
+
+        function showTroubleshooting(data) {
+            pendingId = data.pending_id;
+            document.getElementById("troubleshoot-intro").textContent = data.troubleshooting.intro;
+            stepList.replaceChildren();
+            for (const step of data.troubleshooting.steps) {
+                const item = document.createElement("li");
+                item.textContent = step;   // textContent: AI text is never parsed as HTML
+                stepList.appendChild(item);
+            }
+            answerError.style.display = "none";
+            solvedYes.disabled = false;
+            solvedNo.disabled = false;
+            form.style.display = "none";
+            panel.style.display = "block";
+        }
+
+        function leaveTroubleshooting() {
+            pendingId = null;
+            panel.style.display = "none";
+            form.style.display = "";
+        }
+
+        async function answer(solved) {
+            solvedYes.disabled = true;
+            solvedNo.disabled = true;
+            answerError.style.display = "none";
+
+            try {
+                const response = await fetch(
+                    `/api/pending-tickets/${encodeURIComponent(pendingId)}/answer`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ solved: solved })
+                    });
+                const data = await response.json();
+
+                if (response.status === 410) {
+                    // Expired or already answered: nothing more can be done here.
+                    form.reset();
+                    leaveTroubleshooting();
+                    showResult(data.reason, "error");
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error(data.reason || "Could not send your answer.");
+                }
+
+                form.reset();
+                leaveTroubleshooting();
+                if (solved) {
+                    showResult("Glad that fixed it! No support request was created.", "success");
+                } else {
+                    showTicketSubmitted(data.ticket);
+                }
+            } catch (error) {
+                // Keep the panel open so the user can try again.
+                answerError.textContent = `Error: ${error.message}`;
+                answerError.style.display = "block";
+                solvedYes.disabled = false;
+                solvedNo.disabled = false;
+            }
+        }
+
+        solvedYes.addEventListener("click", () => answer(true));
+        solvedNo.addEventListener("click", () => answer(false));
     </script>
 </body>
 </html>

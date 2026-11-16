@@ -41,7 +41,7 @@ class FakeProvider(AIProvider):
         return ProviderReply(text=self.reply)
 
 
-def fake_app(reply=AI_REPLY):
+def fake_app(reply=AI_REPLY, **manager_options):
     """A test client with a fake Gemini, no retry delays and a temporary
     tickets.json. Returns (client, prompts sent to the fake, repository);
     client.data_path is the temporary tickets.json."""
@@ -53,6 +53,7 @@ def fake_app(reply=AI_REPLY):
         ai_mgr=AIManager(provider, retry_policy=RetryPolicy(0, 0, 0, 0)),
         repository=repository,
         auto_open=False,
+        **manager_options,
     )
     client = manager.app.test_client()
     client.data_path = os.path.join(folder, "tickets.json")

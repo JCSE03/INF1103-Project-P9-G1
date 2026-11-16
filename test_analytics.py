@@ -340,7 +340,7 @@ def test_pages_render_and_link_to_each_other():
     with data_file([ticket()]) as client:
         page = client.get("/analytics")
         assert page.status_code == 200 and b"IT Helpdesk Analytics" in page.data
-        for department in logic_manager.DEPARTMENTS:
+        for department in logic_manager.LogicManager().departments:
             assert department.encode() in page.data
         assert b'href="/analytics"' in client.get("/helpdesk").data
 

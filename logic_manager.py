@@ -336,19 +336,3 @@ class LogicManager:
 
     def sort_queue(self, tickets: list[dict]) -> list[dict]:
         return self._queue.sort(tickets)
-
-
-_default_manager = LogicManager()
-DEPARTMENTS = _default_manager.departments
-
-
-def process_ticket(ai_result: dict) -> dict:
-    return _default_manager.process(ai_result).to_dict()
-
-
-def offers_self_service(decision: dict) -> bool:
-    return _default_manager.offers_self_service(decision)
-
-
-def sort_queue(tickets: list[dict]) -> list[dict]:
-    return _default_manager.sort_queue(tickets)

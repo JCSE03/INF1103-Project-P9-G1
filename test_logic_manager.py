@@ -297,10 +297,8 @@ def test_queue_does_not_change_the_original_list():
     assert [t["ticket_id"] for t in tickets] == ["B", "A"]
 
 
-def test_compat_layer_matches_the_classes():
-    ai_result = make_ai_result("cybersecurity", "medium", "multiple_users")
-    assert lm.process_ticket(ai_result) == manager.process(ai_result).to_dict()
-    assert lm.DEPARTMENTS == ["Cyber", "HR", "Finance", "Infra"]
+def test_departments_are_listed_in_order():
+    assert lm.LogicManager().departments == ["Cyber", "HR", "Finance", "Infra"]
 
 
 def decision_for(category, severity, scope="individual", confidence=0.9, flagged=False):
@@ -313,7 +311,6 @@ def test_self_service_for_low_urgency_infra_tickets():
     assert (p5["priority"], p5["department"]) == ("P5", "Infra")
     assert (p4["priority"], p4["department"]) == ("P4", "Infra")
     assert manager.offers_self_service(p5) and manager.offers_self_service(p4)
-    assert lm.offers_self_service(p5)           # module-level function too
 
 
 def test_no_self_service_for_urgent_infra_tickets():

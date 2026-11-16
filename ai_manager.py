@@ -3,9 +3,6 @@
 AIManager.classify() pipeline: InputSanitizer -> SecurityChecker (SecurityRule
 subclasses) -> RateLimiter -> SensitiveDataRedactor -> PromptBuilder ->
 AIProvider -> ResponseParser -> ResponseValidator -> ClassificationResult.
-
-The module-level functions at the bottom are a TEMPORARY compatibility layer
-for io_manager.py and the existing tests; new code should use AIManager.
 """
 
 import hashlib
@@ -31,7 +28,7 @@ logging.basicConfig(level=logging.ERROR)
 
 # config
 
-load_dotenv(override=True)  # .env wins over a stale key in the environment
+load_dotenv(override=True)  #  will take priority for .env
 
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
@@ -39,24 +36,26 @@ if not api_key:
         "GEMINI_API_KEY not found. Copy .env.example to .env and add your key."
     )
 
-API_TIMEOUT_MS = 30_000  # timeout for Gemini API calls, in milliseconds
+API_TIMEOUT_MS = 30_000  #  timeout for gemini api calls in milliseconds
 client = genai.Client(
     api_key=api_key, http_options=types.HttpOptions(timeout=API_TIMEOUT_MS)
 )
-#  GEMINI_MODEL in .env to try a model with a bigger quota. (gemini-3.5-flash-lite)
+
+# gemini model in env to try model with bigger quota (gemini-3.5-flash-lite)
+
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 MAX_DESCRIPTION_LENGTH = 2000
 MAX_SUMMARY_LENGTH = 300
-RATE_LIMIT_MAX_REQUESTS = 10  # per user per RATE_LIMIT_WINDOW_SECONDS (60s)
+RATE_LIMIT_MAX_REQUESTS = 10  # per user per RATE_LIMIT_WINDOW_SECONDS 60s
 RATE_LIMIT_WINDOW_SECONDS = 60
 RETRY_DELAY_SECONDS = 2
 RATE_LIMIT_RETRY_DELAY_SECONDS = 15  # on a 429 with no retry hint and the user is over the limit
 MAX_RETRY_WAIT_SECONDS = 60
-SERVER_ERROR_CODES = (500, 502, 503, 504)  # Google-side overloaded or down
+SERVER_ERROR_CODES = (500, 502, 503, 504)  # google end overloaded or down
 SERVER_ERROR_RETRY_DELAY_SECONDS = 5
 
-# Matching the keys of logic manager routing table exactly
+# matching the keys of logic manager routing table exactly
 VALID_CATEGORIES = {
     "hardware", "software", "network", "account_access",
     "cybersecurity", "hr", "finance", "other",
@@ -67,7 +66,7 @@ REQUIRED_KEYS = (
     "category", "severity", "affected_scope", "summary", "confidence_score",
 )
 
-# --- classification instructions: free text in, structured JSON out -------
+# instructions to classify free text to json
 
 SYSTEM_INSTRUCTION = """
 You are an AI classification component for an internal bank IT helpdesk.
@@ -146,7 +145,7 @@ Return ONLY valid JSON, no Markdown, with exactly these keys:
 }
 """
 
-# --- results ----------------------------------------------------------------
+# results
 
 @dataclass(frozen=True)
 class SecurityVerdict:
@@ -197,7 +196,7 @@ class ClassificationResult:
                 "manual_review": True}
 
 
-# --- AI provider: interface + Gemini implementation -------------------------
+# ai provider: interface + gemini implementatio
 
 @dataclass(frozen=True)
 class ProviderReply:
@@ -236,7 +235,7 @@ class GeminiProvider(AIProvider):
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=self._system_instruction,
-                    temperature=0,  # consistent classifications
+                    temperature=0,  # consistenc
                     response_mime_type="application/json",
                 ),
             )
@@ -279,13 +278,13 @@ class GeminiProvider(AIProvider):
         return {"code": code, "fatal": fatal, "wait": wait}
 
 
-# --- input handling ---------------------------------------------------------
+#input handlin
 
 class InputSanitizer:
     """Cleans untrusted text before anything else looks at it."""
 
     _INVISIBLE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]")
-    _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # keeps tab and newline
+    _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]") 
 
     @classmethod
     def strip_invisible(cls, text: str) -> str:
@@ -331,7 +330,7 @@ class SensitiveDataRedactor:
 
     @staticmethod
     def default_rules() -> list[RedactionRule]:
-        # Order matters: specific patterns first, the catch-all [NUMBER] last.
+        # order matters: specific patterns first, the catch-all [NUMBER] last.
         octet = r"(?:25[0-5]|2[0-4]\d|1?\d?\d)"
         return [
             RedactionRule(r"\b(password|passcode|passphrase|pin)\b(\s*(?:is|:|=)\s*)\S+",
@@ -353,8 +352,7 @@ class SensitiveDataRedactor:
         return text, total
 
 
-# --- security check: abstract rule, four concrete rules, one checker --------
-
+# security checks are applied before rate limiting, so a malicious user cannot
 class SecurityRule(ABC):
     """One security check. Subclasses set STATUS and REASON and say WHEN they
     match; building the verdict is shared here."""
@@ -464,7 +462,7 @@ class SecurityChecker:
         return SecurityVerdict("allow")
 
 
-# --- supporting services ----------------------------------------------------
+#supporting service
 
 class RateLimiter:
     """Per-user sliding-window limiter (in memory, thread-safe)."""
@@ -648,6 +646,12 @@ class AIManager:
         self._parser = ResponseParser()
         self._validator = ResponseValidator()
 
+    @classmethod
+    def with_gemini(cls) -> "AIManager":
+        """A manager wired to the real Gemini client of this module."""
+        return cls(GeminiProvider(client, MODEL_NAME, SYSTEM_INSTRUCTION,
+                                  key_hint=api_key[-4:]))
+
     def classify(self, record: dict | str | None, max_retries: int = 2,
                  user_id: str = "anonymous") -> ClassificationResult:
         """Classifies one ticket from its problem description (a string, or a
@@ -704,77 +708,3 @@ class AIManager:
         reason = self._retry_policy.failure_reason(last_error)
         self._audit.record(user_id, "error", reason, description)
         return ClassificationResult.rejected("error", reason)
-
-
-# --- TEMPORARY compatibility layer ------------------------------------------
-# io_manager.py and the existing tests call (and patch) these module-level
-# names. Each builds the right class from the CURRENT module values and
-# delegates, so those patches keep working. Delete once they use AIManager.
-
-_audit = AuditLogger()
-audit_log = _audit.logger
-_request_times = defaultdict(deque)  # shared with the limiter built per call
-_last_api_error = None  # only used by call_api and test fakes
-
-
-# stateless helpers: plain aliases to the class methods
-sanitize = InputSanitizer().sanitize
-extract_description = InputSanitizer().extract_description
-redact_sensitive = SensitiveDataRedactor().redact
-parse_response = ResponseParser().parse
-validate_response = ResponseValidator().is_valid
-quota_info = GeminiProvider.quota_info
-
-
-def security_check(description: str) -> tuple[str, str | None]:
-    verdict = SecurityChecker().check(description)
-    return verdict.status, verdict.reason
-
-
-def allow_request(user_id: str, now: float | None = None) -> bool:
-    return RateLimiter(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS,
-                       _request_times).allow(user_id, now)
-
-
-def _gemini() -> GeminiProvider:
-    return GeminiProvider(client, MODEL_NAME, SYSTEM_INSTRUCTION,
-                          key_hint=api_key[-4:])
-
-
-def call_api(prompt: str) -> str | None:
-    """Text-only wrapper kept for old callers; reports failures through
-    _last_api_error."""
-    global _last_api_error
-    reply = _gemini().generate(prompt)
-    _last_api_error = reply.error
-    return reply.text
-
-
-_real_call_api = call_api
-
-
-class _CallApiProvider(AIProvider):
-    """Adapter so AIManager uses the module-level call_api (looked up at call
-    time, so tests can replace it)."""
-
-    def generate(self, prompt: str) -> ProviderReply:
-        global _last_api_error
-        if call_api is _real_call_api:  # normal run: no shared error state
-            return _gemini().generate(prompt)
-        _last_api_error = None  # a replaced call_api reports errors via the global
-        text = call_api(prompt)
-        return ProviderReply(text, _last_api_error)
-
-
-def classify_ticket(record: dict | str | None, max_retries: int = 2,
-                    user_id: str = "anonymous") -> dict:
-    manager = AIManager(
-        _CallApiProvider(),
-        limiter=RateLimiter(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS,
-                            _request_times),
-        audit=_audit,
-        retry_policy=RetryPolicy(
-            RETRY_DELAY_SECONDS, RATE_LIMIT_RETRY_DELAY_SECONDS,
-            MAX_RETRY_WAIT_SECONDS, SERVER_ERROR_RETRY_DELAY_SECONDS),
-    )
-    return manager.classify(record, max_retries, user_id).to_dict()

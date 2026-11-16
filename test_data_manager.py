@@ -1,8 +1,3 @@
-"""Offline tests for data_manager. Every test works in its own temporary
-folder, so the real data/tickets.json and data/tickets.db are never touched.
-
-Run:  python -m unittest test_data_manager   or   python main.py --test
-"""
 import json
 import os
 import sqlite3
@@ -104,6 +99,14 @@ class RepositoryContractTests:
 
     def test_contract_is_a_ticket_repository(self):
         self.assertIsInstance(self.repository, TicketRepository)
+
+    def test_contract_next_id_starts_at_one(self):
+        self.assertEqual(self.repository.next_ticket_id(), "T-0001")
+
+    def test_contract_next_id_skips_deleted_numbers(self):
+        self.write(self.sample_path, [make_ticket(1), make_ticket(2), make_ticket(3)])
+        self.assertTrue(self.repository.delete("T-0002"))
+        self.assertEqual(self.repository.next_ticket_id(), "T-0004")
 
 
 class JsonTicketRepositoryTests(RepositoryContractTests, TempFolderTest):

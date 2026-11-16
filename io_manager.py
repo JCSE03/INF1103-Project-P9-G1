@@ -270,15 +270,17 @@ class FlaskIOManager(BaseIOManager):
         """Save a processed ticket. Returns (ticket, None) or (None, error_response)."""
         with self._data_lock:
             try:
-                records = self.repository.load_all()
+                # Data Manager hands out the next free id, so ids stay unique
+                # even after a ticket has been deleted.
+                ticket_id = self.repository.next_ticket_id()
             except DataReadError:
-                self.notify("tickets.json is unreadable; ticket was NOT saved.")
+                self.notify("Ticket data is unreadable; ticket was NOT saved.")
                 return None, self.format_error(
-                    "Ticket data file could not be read, so the ticket was not saved.", 503
+                    "Ticket data could not be read, so the ticket was not saved.", 503
                 )
 
             ticket = {
-                "ticket_id": f"T-{len(records) + 1:04d}",
+                "ticket_id": ticket_id,
                 "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 **requester,
                 **decision,
@@ -288,7 +290,7 @@ class FlaskIOManager(BaseIOManager):
             try:
                 self.repository.add(ticket)
             except DataSaveError:
-                self.notify("Could not write tickets.json; ticket was NOT saved.")
+                self.notify("Could not save ticket data; ticket was NOT saved.")
                 return None, self.format_error(
                     "The ticket could not be saved. Please try again.", 503
                 )

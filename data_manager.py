@@ -1,4 +1,3 @@
-
 import json
 import logging
 import os
@@ -144,6 +143,13 @@ class TicketRepository(ABC):
         """Every ticket whose `field` equals `value`, e.g. find("department", "Cyber").
         Shared by every subclass."""
         return [ticket for ticket in self.load_all() if ticket.get(field) == value]
+
+    def next_ticket_id(self) -> str:
+        """One above the highest stored number, so ids stay unique after a delete."""
+        numbers = [int(ticket["ticket_id"][2:]) for ticket in self.load_all()
+                   if str(ticket.get("ticket_id", "")).startswith("T-")
+                   and ticket["ticket_id"][2:].isdigit()]
+        return f"T-{max(numbers, default=0) + 1:04d}"
 
 
 class JsonTicketRepository(TicketRepository):

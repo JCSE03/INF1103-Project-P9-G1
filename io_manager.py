@@ -29,6 +29,7 @@ from data_manager import (
 )
 from logic_manager import LogicManager
 from pending_tickets import InMemoryPendingTickets, PendingTicketStore
+from report_export import CsvReportExporter
 
 # The different returns of the Flask routes
 RouteResult = str | Response | tuple[Response, int]
@@ -155,6 +156,7 @@ class FlaskIOManager(BaseIOManager):
         advisor: TicketAdvisor | None = None,
         pending: PendingTicketStore | None = None,
         answer_validator: InputValidator | None = None,
+        report_exporter: CsvReportExporter | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -184,6 +186,7 @@ class FlaskIOManager(BaseIOManager):
         # the requester tries the steps, and only saved if they did not help.
         self.advisor: TicketAdvisor = advisor or TroubleshootingAdvisor.with_gemini()
         self.pending: PendingTicketStore = pending or InMemoryPendingTickets()
+        self.report_exporter: CsvReportExporter = report_exporter or CsvReportExporter()
 
         self._register_routes()
 
@@ -210,6 +213,7 @@ class FlaskIOManager(BaseIOManager):
             view_func=self.analytics_summary,
             methods=["POST"],
         )
+        self.app.add_url_rule("/api/analytics/export", view_func=self.analytics_export, methods=["GET"])
 
     def home(self) -> str:
         return render_template("index.html")
@@ -395,6 +399,26 @@ class FlaskIOManager(BaseIOManager):
         result = self.summarizer.summarize(report, user_id=request.remote_addr or "anonymous")
         code = 200 if result.status == "no_data" else self.STATUS_CODES.get(result.status, 500)
         return jsonify(result.to_dict()), code
+
+    def analytics_export(self) -> RouteResult:
+        """The report as a downloadable CSV file. It never asks the AI: the file
+        has an AI summary only if one was already made for these numbers."""
+        report, error = self._report_for_request()
+        if error:
+            return error
+
+        department = request.args.get("department")
+        body = self.report_exporter.render(report, self.summarizer.cached_summary(report), department)
+        name = re.sub(r"[^A-Za-z0-9_-]", "", department or "all")
+        filename = f"helpdesk-report-{name}-{report['generated_at'][:10]}.{self.report_exporter.extension}"
+        return Response(
+            body.encode("utf-8"),
+            headers={
+                "Content-Type": self.report_exporter.content_type,
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+            },
+        )
 
     def toggle_resolution(self, ticket_id: str) -> RouteResult:
         raw_data = request.get_json(silent=True)

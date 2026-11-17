@@ -225,6 +225,26 @@ def test_the_provider_can_be_swapped_and_gemini_is_wired_in():
     assert result.status == "success" and "<report_statistics>" in calls[0]["contents"]
 
 
+def test_an_existing_summary_can_be_looked_up_without_the_ai():
+    now = [1000.0]
+    summarizer, provider, _ = make(GOOD_REPLY, cache_seconds=600, clock=lambda: now[0])
+    report = report_of(ticket())
+    assert summarizer.cached_summary(report) is None              # nothing made yet
+    made = summarizer.summarize(report)
+    found = summarizer.cached_summary(report)
+    assert found.status == "success" and found.cached is True and found.headline == made.headline
+    assert len(provider.prompts) == 1                             # looking it up used no request
+
+    now[0] = 10 ** 6                                              # far older than the reuse window
+    assert summarizer.cached_summary(report) is not None          # same numbers, same summary
+    assert summarizer.summarize(report).cached is False           # asking again does use the AI
+    assert len(provider.prompts) == 2
+
+    assert summarizer.cached_summary(report_of(ticket(), ticket())) is None   # other numbers
+    for nothing in ({}, None, AnalyticsReport().build([], now=NOW)):
+        assert summarizer.cached_summary(nothing) is None
+
+
 # ---------- the route ----------
 
 @contextmanager

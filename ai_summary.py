@@ -233,7 +233,7 @@ class ReportSummarizer:
         if digest is None:
             return SummaryResult("no_data", reason="There are no tickets to summarise yet.")
 
-        key = hashlib.sha256(digest.encode("utf-8")).hexdigest()
+        key = self._key(digest)
         with self._lock:
             stored = self._cache.get(key)
         if stored and self._clock() - stored[0] < self._cache_seconds:
@@ -249,6 +249,22 @@ class ReportSummarizer:
             with self._lock:
                 self._cache[key] = (self._clock(), result)
         return result
+
+    def cached_summary(self, report: dict) -> SummaryResult | None:
+        """The summary already made for exactly these numbers, or None. It never
+        asks the AI and uses no quota, so a download can include a summary
+        without costing a request. The age is ignored: the same numbers still
+        deserve the same summary."""
+        digest = self._digest.build(report)
+        if digest is None:
+            return None
+        with self._lock:
+            stored = self._cache.get(self._key(digest))
+        return replace(stored[1], cached=True) if stored else None
+
+    @staticmethod
+    def _key(digest: str) -> str:
+        return hashlib.sha256(digest.encode("utf-8")).hexdigest()
 
     def _ask(self, digest: str, max_attempts: int, user_id: str) -> SummaryResult:
         prompt = f"<report_statistics>\n{digest}\n</report_statistics>"

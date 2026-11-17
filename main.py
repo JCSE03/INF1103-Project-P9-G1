@@ -63,7 +63,9 @@ class HelpdeskApplication:
         import test_data_manager
         import test_io_manager
         import test_logic_manager
-        import test_self_service
+        import test_report_export
+
+
 
         try:
             test_ai.run_offline_tests()
@@ -76,7 +78,7 @@ class HelpdeskApplication:
             + test_io_manager.run_all_tests()
             + test_analytics.run_all_tests()
             + test_ai_summary.run_all_tests()
-            + test_self_service.run_all_tests()
+            + test_report_export.run_all_tests()
         )
         if failures:
             sys.exit(f"{failures} test(s) FAILED")

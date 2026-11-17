@@ -141,6 +141,28 @@
 
         footer { margin-top: 18px; color: var(--muted); font-size: 13px; }
         [hidden] { display: none !important; }
+
+        .print-only { display: none; }
+
+        @page { margin: 14mm; }
+
+        @media print {
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { background: white; }
+            .topbar { padding: 0 0 10px; color: var(--navy); background: white; border-bottom: 2px solid var(--navy); }
+            .topbar p { color: var(--muted); }
+            .topbar nav, .toolbar, #summarise, .summary .note, #footer:empty { display: none !important; }
+            .summary:has(#summary-result:empty) { display: none; }
+            .print-only { display: block; margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+            main { max-width: none; padding: 14px 0 0; }
+            .kpis { grid-template-columns: repeat(7, 1fr); gap: 8px; }
+            .kpi { padding: 10px; }
+            .kpi .value { font-size: 22px; }
+            .kpi .name { font-size: 11px; }
+            .grid { grid-template-columns: 1fr 1fr; }
+            .card, .kpi { break-inside: avoid; }
+            .card.wide { break-inside: auto; }
+        }
     </style>
 </head>
 
@@ -158,6 +180,8 @@
     </header>
 
     <main>
+        <p class="print-only" id="print-note"></p>
+
         <section class="toolbar">
             <div>
                 <label for="department">Department</label>
@@ -170,6 +194,8 @@
             </div>
 
             <button id="refresh" type="button">Refresh</button>
+            <button id="download" type="button">Download report (CSV)</button>
+            <button id="print" type="button">Print / save as PDF</button>
             <span class="updated" id="updated">Loading…</span>
         </section>
 
@@ -342,6 +368,33 @@
             }
         }
 
+        async function downloadReport() {
+            const button = $("download");
+            const department = $("department").value;
+            button.disabled = true;
+            try {
+                const response = await fetch("/api/analytics/export" + (department ? "?department=" + encodeURIComponent(department) : ""));
+                if (!response.ok) {
+                    let reason = "The report could not be downloaded.";
+                    try { reason = (await response.json()).reason || reason; } catch (error) { /* keep the default text */ }
+                    showMessage(reason);
+                    return;
+                }
+                const named = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "");
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(await response.blob());
+                link.download = named ? named[1] : "helpdesk-report.csv";
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(link.href);
+            } catch (error) {
+                showMessage("The report could not be downloaded.");
+            } finally {
+                button.disabled = false;
+            }
+        }
+
         const STACK = [{key: "open", color: OPEN, name: "open"}, {key: "resolved", color: DONE, name: "resolved"}];
 
         function showKpis(o, risk) {
@@ -386,6 +439,8 @@
             if (report.failed_metrics.length) notes.push(`Could not calculate: ${report.failed_metrics.join(", ")}.`);
             $("footer").textContent = notes.join(" ");
             $("updated").textContent = "Updated " + new Date().toLocaleTimeString();
+            $("print-note").textContent = "Report generated " + new Date().toLocaleString()
+                + " | Department: " + ($("department").value || "All departments");
         }
 
         function showMessage(text, neutral = false) {
@@ -414,6 +469,8 @@
 
         $("department").addEventListener("change", () => { $("summary-result").innerHTML = ""; load(); });
         $("summarise").addEventListener("click", summarise);
+        $("download").addEventListener("click", downloadReport);
+        $("print").addEventListener("click", () => window.print());
         $("refresh").addEventListener("click", load);
         load();
         setInterval(load, REFRESH_MS);
